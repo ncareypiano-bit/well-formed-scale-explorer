@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Well-Formed Scale Explorer</title>
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=5" />
   </head>
   <body>
     <main class="app-shell">
@@ -13,6 +13,116 @@
           <h1>Well-Formed Scale Explorer</h1>
         </div>
       </header>
+
+      <details class="panel help-panel">
+        <summary>Help</summary>
+        <div class="help-content">
+          <section class="help-section">
+            <h2>What This App Does</h2>
+            <p>Well-Formed Scale Explorer builds and plays well-formed scales from either generator data or scale-step data.</p>
+            <p>The scale updates in the background as values are applied, making it easy to modify, compare, and reshape scales.</p>
+          </section>
+
+          <section class="help-section">
+            <h2>Build Method</h2>
+            <p><strong>Generator Build</strong></p>
+            <p>Specify the scale by period <code>p</code> and generator <code>g</code> in frequency ratios, or by <code>p</code> and <code>log<sub>p</sub>(g)</code>.</p>
+            <p>Choose a compatible cardinality <code>N</code> from the available values.</p>
+
+            <p><strong>Scale Step Build</strong></p>
+            <p>Specify the scale by:</p>
+            <ul>
+              <li>period</li>
+              <li>cardinality</li>
+              <li>number of <code>A</code> steps</li>
+              <li>either the relative proportion <code>A:B</code> or the size of <code>A</code></li>
+            </ul>
+            <p>Applied changes update the scale in the background, so the two methods can be used flexibly as complementary ways of shaping the same object.</p>
+          </section>
+
+          <section class="help-section">
+            <h2>Base Frequency</h2>
+            <p>The base frequency sets the sounding register of the scale.</p>
+            <p>You may enter:</p>
+            <ul>
+              <li>a note name in scientific pitch notation, such as <code>F3</code>, <code>C4</code>, <code>Bb4</code></li>
+              <li>or a frequency in Hz</li>
+            </ul>
+          </section>
+
+          <section class="help-section">
+            <h2>Information Panels</h2>
+            <p><strong>Cardinalities</strong></p>
+            <ul>
+              <li><code>N</code>: total number of scale tones in the period</li>
+              <li><code>#A</code>, <code>#B</code>: numbers of occurrences of the step types</li>
+              <li><code>A/B</code>: logarithmic ratio of the two step sizes</li>
+            </ul>
+
+            <p><strong>Values</strong></p>
+            <p>Shows <code>p</code>, <code>g</code>, <code>A</code>, and <code>B</code> as frequency ratios and cents values.</p>
+          </section>
+
+          <section class="help-section">
+            <h2>Keyboard</h2>
+            <p>The keyboard allows a range of two full periods for demonstration. The keyboard displays:</p>
+            <ul>
+              <li>white keys for scale tones</li>
+              <li>black keys for auxiliary tones between adjacent scale tones</li>
+            </ul>
+            <p>The step pattern is shown above the keyboard.</p>
+            <p>Click a key to play it.</p>
+            <p>If <code>Computer keyboard</code> is enabled, click once in the keyboard area before using the computer keyboard.</p>
+          </section>
+
+          <section class="help-section">
+            <h2>Mode</h2>
+            <p>The mode control selects the tonic within the scale.</p>
+            <p><code>Mode order</code> steps through modes either:</p>
+            <ul>
+              <li>in scale-step order</li>
+              <li>in generator order</li>
+            </ul>
+          </section>
+
+          <section class="help-section">
+            <h2>Keyboard Labels</h2>
+            <ul>
+              <li>note numbers</li>
+              <li>Hz</li>
+              <li>Hz/Base</li>
+              <li>cents</li>
+            </ul>
+          </section>
+
+          <section class="help-section">
+            <h2>Playback</h2>
+            <ul>
+              <li>up</li>
+              <li>down</li>
+              <li>up/down</li>
+              <li>generator order</li>
+            </ul>
+            <p><code>Duration</code> controls playback note length.</p>
+            <p><code>Timbre</code> selects the instrument sound.</p>
+          </section>
+
+          <section class="help-section">
+            <h2>Computer Keyboard</h2>
+            <p>If enabled:</p>
+            <ul>
+              <li>lower-case keys play white keys</li>
+              <li>shifted keys play the black key to the right</li>
+            </ul>
+            <p>This mapping is limited by the number of available physical keys, so very large scales may extend beyond the computer-key range even though they still appear on screen.</p>
+          </section>
+
+          <section class="help-section">
+            <h2>Special Case: Degenerate Well-Formed Scales</h2>
+            <p>Every equal tempered scale is understood to be a degenerate well-formed scale. Whenever <code>log<sub>p</sub>(g)</code> is rational, such a scale will be the largest cardinality. Such scales do not transport back predictably from Scale Step Build to Generator Build.</p>
+          </section>
+        </div>
+      </details>
 
       <section class="panel build-panel">
         <div class="panel-header">
@@ -189,6 +299,6 @@
       </section>
     </main>
 
-    <script type="module" src="./app.js?v=11"></script>
+    <script type="module" src="./app.js?v=12"></script>
   </body>
 </html>

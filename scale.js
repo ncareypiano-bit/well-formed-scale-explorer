@@ -679,8 +679,8 @@ export function analysisPanelData(scale) {
   return {
     cardinalities: [
       { label: "N", value: String(scale.cardinality) },
-      { label: "A", value: String(summary.typeACount) },
-      { label: "B", value: String(summary.typeBCount) },
+      { label: "#A", value: String(summary.typeACount) },
+      { label: "#B", value: String(summary.typeBCount) },
       {
         label: "A/B",
         value: summary.ratio === null ? "-" : displayNumber(summary.ratio, 6),

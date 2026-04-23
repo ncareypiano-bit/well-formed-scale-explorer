@@ -15,7 +15,7 @@ import {
   parseGeneratorConfiguration,
   parseBaseFrequencyInput,
   playbackRowsForMode,
-} from "./scale.js?v=8";
+} from "./scale.js?v=9";
 import { AudioEngine } from "./audio.js?v=2";
 
 const state = {
@@ -312,7 +312,7 @@ function renderModeSelect(scale) {
 }
 
 function keySummary(key) {
-  const prefix = key.role === "color" ? "Color tone" : "Scale tone";
+  const prefix = key.role === "color" ? "Auxiliary tone" : "Scale tone";
   return `${prefix} at ${displayNumber(key.displayFrequency)} Hz`;
 }
 
