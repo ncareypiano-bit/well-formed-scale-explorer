@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Well-Formed Scale Explorer</title>
+    <link rel="stylesheet" href="./styles.css?v=4" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="page-header">
+        <div>
+          <h1>Well-Formed Scale Explorer</h1>
+        </div>
+      </header>
+
+      <section class="panel build-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Build method</h2>
+          </div>
+          <div class="build-toggle" id="build-toggle">
+            <button id="build-generator" class="toggle-button is-active" type="button">Generator Build</button>
+            <button id="build-step" class="toggle-button" type="button">Scale Step Build</button>
+          </div>
+        </div>
+
+        <section id="generator-build-panel" class="build-method-panel">
+          <div class="panel-subheader">
+            <h3>Generator Build</h3>
+          </div>
+
+          <div class="controls-grid">
+            <label>
+              <span>Period (p)</span>
+              <input id="period-input" type="text" value="2" />
+            </label>
+
+            <label>
+              <span>Generator input</span>
+              <select id="generator-mode">
+                <option value="generator">g</option>
+                <option value="log">log_p(g)</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Generator / log value</span>
+              <input id="generator-input" type="text" value="3/2" />
+            </label>
+
+            <label>
+              <span>Cardinality (N)</span>
+              <select id="cardinality-input"></select>
+            </label>
+
+            <label>
+              <span>Base frequency</span>
+              <input id="base-frequency-input" type="text" value="F3" />
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button id="apply-generator">Apply generator</button>
+          </div>
+        </section>
+
+        <section id="step-build-panel" class="build-method-panel hidden">
+          <div class="panel-subheader">
+            <h3>Scale Step Build</h3>
+          </div>
+
+          <div class="controls-grid">
+            <label>
+              <span>Period (p)</span>
+              <input id="step-period-input" type="text" value="2" />
+            </label>
+
+            <label>
+              <span>Cardinality (N)</span>
+              <input id="step-cardinality-input" type="number" min="2" max="32" value="7" />
+            </label>
+
+            <label>
+              <span>Type A count</span>
+              <input id="type-a-count-input" type="number" min="0" max="32" value="5" />
+            </label>
+
+            <label>
+              <span>Input mode</span>
+              <select id="step-input-mode">
+                <option value="ratio">Step ratio</option>
+                <option value="size">Type A size</option>
+              </select>
+            </label>
+
+            <label id="ratio-a-label">
+              <span>A proportion</span>
+              <input id="ratio-a-input" type="text" value="0.1699250014" />
+            </label>
+
+            <label id="ratio-b-label">
+              <span>B proportion</span>
+              <input id="ratio-b-input" type="text" value="0.0751874965" />
+            </label>
+
+            <label id="type-a-size-label">
+              <span>Type A size</span>
+              <input id="type-a-size-input" type="text" value="0.1699250014" />
+            </label>
+
+            <label>
+              <span>Base frequency</span>
+              <input id="step-base-frequency-input" type="text" value="F3" />
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button id="apply-step-build">Apply scale step build</button>
+          </div>
+        </section>
+
+        <p id="status-line" class="status-line"></p>
+      </section>
+
+      <section class="panel">
+        <section class="analysis-panel" id="analysis-panel"></section>
+      </section>
+
+      <section class="panel keyboard-panel">
+        <div class="panel-header keyboard-header">
+          <div>
+            <h2>Keyboard</h2>
+            <p id="pattern-line"></p>
+          </div>
+          <div class="keyboard-tools">
+            <label class="inline-control">
+              <span>Mode</span>
+              <select id="mode-select"></select>
+            </label>
+            <label class="inline-control">
+              <span>Mode order</span>
+              <select id="mode-order">
+                <option value="step">Step</option>
+                <option value="generator">Generator</option>
+              </select>
+            </label>
+            <label class="inline-control">
+              <span>Keyboard labels</span>
+              <select id="label-mode">
+                <option value="notes">Note numbers</option>
+                <option value="hz">Hz</option>
+                <option value="ratio">Hz/Base</option>
+                <option value="cents">Cents</option>
+              </select>
+            </label>
+            <label class="inline-control">
+              <span>Timbre</span>
+              <select id="timbre-select">
+                <option value="organ">Organ</option>
+                <option value="sine">Sine</option>
+                <option value="clarinet">Clarinet</option>
+                <option value="flute">Flute</option>
+                <option value="plucked">Plucked</option>
+              </select>
+            </label>
+            <label class="inline-control">
+              <span>Computer keyboard</span>
+              <input id="keyboard-enabled" type="checkbox" checked />
+            </label>
+            <label class="inline-control">
+              <span>Duration</span>
+              <input id="duration-slider" type="range" min="0.12" max="1.2" step="0.01" value="0.45" />
+              <strong id="duration-readout">0.45</strong>
+            </label>
+          </div>
+        </div>
+
+        <p id="keyboard-legend" class="keyboard-legend"></p>
+        <div class="action-row keyboard-actions">
+          <button id="play-up">Play up</button>
+          <button id="play-down">Play down</button>
+          <button id="play-updown">Play up/down</button>
+          <button id="play-generator-order">Play generator order</button>
+          <button id="stop-playback" class="secondary-button">Stop</button>
+        </div>
+        <div id="keyboard" class="keyboard" tabindex="0" aria-label="Scale keyboard"></div>
+        <p id="summary-line" class="summary-line"></p>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js?v=11"></script>
+  </body>
+</html>
