@@ -16,7 +16,7 @@ import {
   orderedModes,
   parseGeneratorConfiguration,
   parseBaseFrequencyInput,
-} from "./scale.js?v=11";
+} from "./scale.js?v=12";
 import { AudioEngine } from "./audio.js?v=2";
 
 const state = {
@@ -238,14 +238,16 @@ function syncGeneratorControlsFromScale(scale) {
   );
 }
 
-function rebuildScale({ syncPanels = false } = {}) {
+function rebuildScale({ syncPanels = false, resetCycleSelection = false } = {}) {
   try {
     audio.stopAll();
     if (state.activeBuildMethod === "generator") {
       refreshCardinalityOptions();
     }
     state.scale = buildCurrentScale();
-    state.cycleStepTouched = false;
+    if (resetCycleSelection) {
+      state.cycleStepTouched = false;
+    }
     state.activeKeyboardKeys.clear();
     state.activePitchClasses.clear();
     state.activeDisplayDegrees.clear();
@@ -998,11 +1000,11 @@ els.viewCircle.addEventListener("click", () => {
 
 els.applyGenerator.addEventListener("click", () => {
   state.activeBuildMethod = "generator";
-  rebuildScale({ syncPanels: true });
+  rebuildScale({ syncPanels: true, resetCycleSelection: true });
 });
 els.applyStepBuild.addEventListener("click", () => {
   state.activeBuildMethod = "step";
-  rebuildScale({ syncPanels: true });
+  rebuildScale({ syncPanels: true, resetCycleSelection: true });
 });
 els.modeSelect.addEventListener("change", () => rebuildScale());
 els.modeOrder.addEventListener("change", () => {
@@ -1016,11 +1018,14 @@ els.cycleStep.addEventListener("change", () => {
 els.cosetSelect.addEventListener("change", render);
 els.cardinalityInput.addEventListener("change", () => {
   state.activeBuildMethod = "generator";
-  rebuildScale({ syncPanels: true });
+  rebuildScale({ syncPanels: true, resetCycleSelection: true });
 });
 els.labelMode.addEventListener("change", render);
 els.generatorMode.addEventListener("change", () => {
-  rebuildScale({ syncPanels: state.activeBuildMethod === "generator" });
+  rebuildScale({
+    syncPanels: state.activeBuildMethod === "generator",
+    resetCycleSelection: true,
+  });
 });
 els.stepInputMode.addEventListener("change", renderStepInputMode);
 els.timbreSelect.addEventListener("change", () => {
@@ -1047,4 +1052,4 @@ window.addEventListener("keyup", handleComputerKeyUp);
 
 els.durationReadout.textContent = Number(els.durationSlider.value).toFixed(2);
 renderStepInputMode();
-rebuildScale({ syncPanels: true });
+rebuildScale({ syncPanels: true, resetCycleSelection: true });
