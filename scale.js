@@ -1,12 +1,18 @@
 const EPSILON = 1e-10;
 const BASE_FREQUENCY_MIN = 22;
 const BASE_FREQUENCY_MAX = 1047;
+const MAX_CARDINALITY = 60;
 
 export const KEYBOARD_KEYS = "zxcvbnm,./asdfghjkl;'qwertyuiop[]".split("");
 export const MODE_ORDERS = {
   step: "step",
   generator: "generator",
 };
+
+function activeRows(scale) {
+  const rows = scale.displayRows ?? scale.rows;
+  return rows.slice(0, scale.cardinality);
+}
 
 export function evaluateExpression(raw) {
   const expression = String(raw).trim();
@@ -370,8 +376,8 @@ export function buildScaleFromStepStructure({
   if (!(baseFrequency > 0)) {
     throw new Error("Base frequency must be positive.");
   }
-  if (!Number.isInteger(cardinality) || cardinality <= 1) {
-    throw new Error("Cardinality must be an integer greater than 1.");
+  if (!Number.isInteger(cardinality) || cardinality <= 1 || cardinality > MAX_CARDINALITY) {
+    throw new Error(`Cardinality must be an integer between 2 and ${MAX_CARDINALITY}.`);
   }
   if (!Number.isInteger(typeACount) || typeACount < 0 || typeACount > cardinality) {
     throw new Error("Type A count must be an integer between 0 and N.");
@@ -512,6 +518,63 @@ export function playbackRowsForMode(scale, playbackMode) {
     default:
       return rows;
   }
+}
+
+export function circleRows(scale) {
+  const rows = activeRows(scale);
+  const tonicPitchClass = rows[0]?.pitchClass ?? 0;
+  return rows.map((row, index) => ({
+    ...row,
+    displayDegree: index,
+    relativePitchClass: mod1(row.pitchClass - tonicPitchClass),
+  }));
+}
+
+export function generatorRowsForCircle(scale, direction = "up") {
+  const rows = circleRows(scale);
+  const tonicIndex = rows[0]?.fromGeneratorIndex ?? 0;
+  const ordered = rows
+    .map((row) => ({
+      ...row,
+      generatorDistance:
+        ((row.fromGeneratorIndex - tonicIndex) % scale.cardinality + scale.cardinality) % scale.cardinality,
+    }))
+    .sort((left, right) => {
+      if (direction === "down") {
+        if (left.generatorDistance === 0) return -1;
+        if (right.generatorDistance === 0) return 1;
+        return right.generatorDistance - left.generatorDistance;
+      }
+      return left.generatorDistance - right.generatorDistance;
+    });
+
+  return ordered;
+}
+
+export function cycleGroupsForCircle(scale, stepSize) {
+  const rows = circleRows(scale);
+  const size = rows.length;
+  const step = ((stepSize % size) + size) % size;
+  if (step === 0) {
+    throw new Error("Cycle step must be between 1 and N-1.");
+  }
+
+  const visited = new Array(size).fill(false);
+  const groups = [];
+
+  for (let start = 0; start < size; start += 1) {
+    if (visited[start]) continue;
+    const group = [];
+    let index = start;
+    while (!visited[index]) {
+      visited[index] = true;
+      group.push(rows[index]);
+      index = (index + step) % size;
+    }
+    groups.push(group);
+  }
+
+  return groups;
 }
 
 function keyboardRows(scale) {

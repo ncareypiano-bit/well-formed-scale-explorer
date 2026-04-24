@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Well-Formed Scale Explorer</title>
-    <link rel="stylesheet" href="./styles.css?v=5" />
+    <link rel="stylesheet" href="./styles.css?v=13" />
   </head>
   <body>
     <main class="app-shell">
@@ -64,15 +64,36 @@
           </section>
 
           <section class="help-section">
+            <h2>Explorer</h2>
+            <p>The Explorer can be shown either as a <strong>Keyboard</strong> or as a <strong>Scale Circle</strong>.</p>
+            <p>The header displays:</p>
+            <ul>
+              <li><code>Step pattern</code> in <code>A/B</code></li>
+              <li><code>Cycle pattern</code> in <code>X/Y</code></li>
+              <li><code>Generator span</code>, the cycle corresponding to generator order</li>
+            </ul>
+            <p>The interval table below the cycle controls shows the two interval classes of the selected cycle as frequency ratios and cents. In the circle view, the same colors are used on the cycle segments.</p>
+          </section>
+
+          <section class="help-section">
             <h2>Keyboard</h2>
-            <p>The keyboard allows a range of two full periods for demonstration. The keyboard displays:</p>
+            <p>The keyboard allows a range of two full periods for demonstration. It shows:</p>
             <ul>
               <li>white keys for scale tones</li>
               <li>black keys for auxiliary tones between adjacent scale tones</li>
             </ul>
-            <p>The step pattern is shown above the keyboard.</p>
             <p>Click a key to play it.</p>
-            <p>If <code>Computer keyboard</code> is enabled, click once in the keyboard area before using the computer keyboard.</p>
+            <p>The computer keyboard is active in Keyboard view:</p>
+            <ul>
+              <li>lower-case keys play white keys</li>
+              <li>shifted keys play the black key to the right</li>
+            </ul>
+          </section>
+
+          <section class="help-section">
+            <h2>Scale Circle</h2>
+            <p>The Scale Circle places the notes of the scale around a circle, with the current tonic at the top.</p>
+            <p>Click a point to play it. In Scale Circle view, <code>Shift</code>-click plays that note one period higher.</p>
           </section>
 
           <section class="help-section">
@@ -96,25 +117,17 @@
           </section>
 
           <section class="help-section">
-            <h2>Playback</h2>
+            <h2>Cycle Controls</h2>
+            <p>The cycle selector chooses a cycle through the scale degrees. Special cases include:</p>
             <ul>
-              <li>up</li>
-              <li>down</li>
-              <li>up/down</li>
-              <li>generator order</li>
+              <li><code>1</code>: step order</li>
+              <li><code>N-1</code>: reverse step order</li>
+              <li><code>Generator span</code>: generator order</li>
+              <li><code>N - Generator span</code>: reverse generator order</li>
             </ul>
+            <p>If the chosen cycle step is not relatively prime to <code>N</code>, the cycle breaks into cosets. In that case a <code>Coset</code> selector appears.</p>
             <p><code>Duration</code> controls playback note length.</p>
             <p><code>Timbre</code> selects the instrument sound.</p>
-          </section>
-
-          <section class="help-section">
-            <h2>Computer Keyboard</h2>
-            <p>If enabled:</p>
-            <ul>
-              <li>lower-case keys play white keys</li>
-              <li>shifted keys play the black key to the right</li>
-            </ul>
-            <p>This mapping is limited by the number of available physical keys, so very large scales may extend beyond the computer-key range even though they still appear on screen.</p>
           </section>
 
           <section class="help-section">
@@ -188,12 +201,12 @@
 
             <label>
               <span>Cardinality (N)</span>
-              <input id="step-cardinality-input" type="number" min="2" max="32" value="7" />
+              <input id="step-cardinality-input" type="number" min="2" max="60" value="7" />
             </label>
 
             <label>
               <span>Type A count</span>
-              <input id="type-a-count-input" type="number" min="0" max="32" value="5" />
+              <input id="type-a-count-input" type="number" min="0" max="60" value="5" />
             </label>
 
             <label>
@@ -239,9 +252,12 @@
 
       <section class="panel keyboard-panel">
         <div class="panel-header keyboard-header">
-          <div>
-            <h2>Keyboard</h2>
-            <p id="pattern-line"></p>
+          <div class="explorer-title-row">
+            <h2>Explorer</h2>
+            <div class="build-toggle" id="view-toggle">
+              <button id="view-keyboard" class="toggle-button is-active" type="button">Keyboard</button>
+              <button id="view-circle" class="toggle-button" type="button">Scale Circle</button>
+            </div>
           </div>
           <div class="keyboard-tools">
             <label class="inline-control">
@@ -256,7 +272,7 @@
               </select>
             </label>
             <label class="inline-control">
-              <span>Keyboard labels</span>
+              <span>Labels</span>
               <select id="label-mode">
                 <option value="notes">Note numbers</option>
                 <option value="hz">Hz</option>
@@ -275,30 +291,36 @@
               </select>
             </label>
             <label class="inline-control">
-              <span>Computer keyboard</span>
-              <input id="keyboard-enabled" type="checkbox" checked />
-            </label>
-            <label class="inline-control">
               <span>Duration</span>
-              <input id="duration-slider" type="range" min="0.12" max="1.2" step="0.01" value="0.45" />
-              <strong id="duration-readout">0.45</strong>
+              <input id="duration-slider" type="range" min="0.12" max="1.2" step="0.01" value="0.75" />
+              <strong id="duration-readout">0.75</strong>
             </label>
+          </div>
+          <div class="explorer-meta">
+            <p><strong>Step pattern</strong> <span id="pattern-line"></span></p>
+            <p><strong>Cycle pattern</strong> <span id="cycle-pattern-line"></span></p>
+            <p><strong>Generator span</strong> <span id="generator-span-line"></span></p>
           </div>
         </div>
 
-        <p id="keyboard-legend" class="keyboard-legend"></p>
-        <div class="action-row keyboard-actions">
-          <button id="play-up">Play up</button>
-          <button id="play-down">Play down</button>
-          <button id="play-updown">Play up/down</button>
-          <button id="play-generator-order">Play generator order</button>
+        <div id="cycle-actions" class="action-row keyboard-actions">
+          <label class="inline-control">
+            <span>Cycle</span>
+            <select id="cycle-step"></select>
+          </label>
+          <label id="coset-control" class="inline-control hidden">
+            <span>Coset</span>
+            <select id="coset-select"></select>
+          </label>
+          <button id="play-cycle">Play cycle</button>
           <button id="stop-playback" class="secondary-button">Stop</button>
         </div>
-        <div id="keyboard" class="keyboard" tabindex="0" aria-label="Scale keyboard"></div>
+        <section id="interval-panel" class="interval-panel"></section>
+        <div id="keyboard" class="keyboard" tabindex="0" aria-label="Scale explorer surface"></div>
         <p id="summary-line" class="summary-line"></p>
       </section>
     </main>
 
-    <script type="module" src="./app.js?v=12"></script>
+    <script type="module" src="./app.js?v=23"></script>
   </body>
 </html>

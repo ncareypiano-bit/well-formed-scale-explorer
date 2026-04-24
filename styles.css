@@ -252,13 +252,108 @@ button:hover {
   gap: 16px;
 }
 
-.keyboard-tools {
+.keyboard-header {
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.explorer-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 14px;
+  width: 100%;
+}
+
+.explorer-meta {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  width: 100%;
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin-top: 2px;
+}
+
+.explorer-meta p {
+  margin: 0;
+}
+
+.explorer-meta strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.keyboard-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 2px;
 }
 
 .keyboard-actions {
   margin-top: 0;
+  justify-content: center;
+}
+
+.interval-panel {
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(247, 238, 219, 0.72);
+  border: 1px solid rgba(95, 73, 18, 0.12);
+}
+
+.interval-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+
+.interval-table th,
+.interval-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(95, 73, 18, 0.12);
+  text-align: left;
+}
+
+.interval-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.interval-table tbody tr:last-child th,
+.interval-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.interval-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interval-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.interval-dot.large {
+  background: rgba(175, 127, 24, 0.82);
+}
+
+.interval-dot.small {
+  background: rgba(68, 137, 126, 0.76);
+}
+
+.interval-dot.single {
+  background: rgba(159, 125, 45, 0.46);
 }
 
 .inline-control {
@@ -400,6 +495,26 @@ button:hover {
   height: 206px;
 }
 
+.keyboard-cycle-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 206px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.cycle-segment {
+  stroke: rgba(159, 125, 45, 0.42);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.cycle-segment.active {
+  stroke: rgba(216, 180, 74, 0.95);
+  stroke-width: 5.5;
+}
+
 .key {
   position: relative;
   display: flex;
@@ -508,6 +623,91 @@ button:hover {
   color: var(--muted);
 }
 
+.circle-surface {
+  min-height: 580px;
+  padding: 18px;
+}
+
+.circle-stage {
+  display: flex;
+  justify-content: center;
+  min-width: 620px;
+}
+
+.scale-circle-svg {
+  width: min(680px, 100%);
+  height: auto;
+  overflow: visible;
+}
+
+.circle-ring {
+  fill: rgba(255, 252, 246, 0.92);
+  stroke: rgba(95, 73, 18, 0.35);
+  stroke-width: 3;
+}
+
+.circle-generator-line {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.circle-generator-line.large {
+  stroke: rgba(175, 127, 24, 0.82);
+}
+
+.circle-generator-line.small {
+  stroke: rgba(68, 137, 126, 0.76);
+}
+
+.circle-generator-line.single {
+  stroke: rgba(159, 125, 45, 0.46);
+}
+
+.circle-generator-line.active {
+  stroke-width: 4.2;
+}
+
+.circle-generator-line.large.active {
+  stroke: rgba(216, 180, 74, 0.98);
+}
+
+.circle-generator-line.small.active {
+  stroke: rgba(106, 196, 181, 0.98);
+}
+
+.circle-generator-line.single.active {
+  stroke: rgba(216, 180, 74, 0.88);
+}
+
+.circle-point {
+  fill: rgba(255, 248, 232, 0.98);
+  stroke: rgba(86, 67, 28, 0.44);
+  stroke-width: 2;
+  cursor: pointer;
+  transition: fill 120ms ease, transform 120ms ease;
+}
+
+.circle-point.active {
+  fill: #d8b44a;
+  stroke: rgba(95, 73, 18, 0.82);
+}
+
+.circle-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.circle-label {
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--accent-dark);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
 @media (max-width: 760px) {
   .page-header,
   .keyboard-header {
@@ -518,6 +718,17 @@ button:hover {
   .panel {
     padding: 16px;
     border-radius: 20px;
+  }
+
+  .explorer-title-row,
+  .explorer-meta,
+  .keyboard-tools {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .keyboard-actions {
+    justify-content: flex-start;
   }
 
   .key {
@@ -537,5 +748,9 @@ button:hover {
   .color-key-layer,
   .color-key {
     height: 112px;
+  }
+
+  .circle-stage {
+    min-width: 520px;
   }
 }
