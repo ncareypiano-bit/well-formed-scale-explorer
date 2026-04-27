@@ -148,10 +148,43 @@ function modalCycleRows(scale) {
     }));
 }
 
+function mod(value, modulus) {
+  return ((value % modulus) + modulus) % modulus;
+}
+
+function modularInverse(value, modulus) {
+  let t = 0;
+  let newT = 1;
+  let r = modulus;
+  let newR = mod(value, modulus);
+
+  while (newR !== 0) {
+    const quotient = Math.floor(r / newR);
+    [t, newT] = [newT, t - quotient * newT];
+    [r, newR] = [newR, r - quotient * newR];
+  }
+
+  if (r !== 1) {
+    throw new Error("Generator span is not invertible modulo N.");
+  }
+
+  return mod(t, modulus);
+}
+
+function trueGeneratorSpan(scale) {
+  const rows = circleRows(scale);
+  const tonicGeneratorIndex = rows[0]?.fromGeneratorIndex ?? 0;
+  const generatorRow = rows.find((row) => {
+    const distance = mod(row.fromGeneratorIndex - tonicGeneratorIndex, scale.cardinality);
+    return distance === 1;
+  });
+  return generatorRow?.displayDegree ?? 1;
+}
+
 function cycleGroupsForSelectedOrder(scale, stepSize) {
   const rows = modalCycleRows(scale);
   const size = rows.length;
-  const step = ((stepSize % size) + size) % size;
+  const step = mod(stepSize, size);
   if (step === 0) {
     throw new Error("Cycle step must be between 1 and N-1.");
   }
@@ -175,15 +208,7 @@ function cycleGroupsForSelectedOrder(scale, stepSize) {
 }
 
 function generatorCycleDefaultStep(scale) {
-  const rows = modalCycleRows(scale);
-  const tonicGeneratorIndex = rows[0]?.fromGeneratorIndex ?? 0;
-  const generatorRow = rows.find((row) => {
-    const distance =
-      ((row.fromGeneratorIndex - tonicGeneratorIndex) % scale.cardinality + scale.cardinality) %
-      scale.cardinality;
-    return distance === 1;
-  });
-  return generatorRow?.displayDegree ?? 1;
+  return state.modeOrder === MODE_ORDERS.generator ? 1 : trueGeneratorSpan(scale);
 }
 
 function currentModeValue() {
@@ -945,8 +970,8 @@ function render() {
   renderCycleStepOptions(scale);
   renderCosetOptions(scale);
   renderAnalysisPanel(scale);
-  els.generatorSpanLine.textContent = String(generatorCycleDefaultStep(scale));
-  els.patternLine.textContent = scale.displayStepWord || scale.stepWord || "";
+  els.generatorSpanLine.textContent = String(trueGeneratorSpan(scale));
+  els.patternLine.textContent = scale.stepWord || "";
   els.cyclePatternLine.textContent = cyclePatternText(scale);
   els.cycleFoldingLine.textContent = cycleFoldingText(scale);
   renderIntervalPanel(scale);
@@ -1101,7 +1126,25 @@ els.applyStepBuild.addEventListener("click", () => {
 });
 els.modeSelect.addEventListener("change", () => rebuildScale());
 els.modeOrder.addEventListener("change", () => {
-  state.modeOrder = els.modeOrder.value;
+  const nextOrder = els.modeOrder.value;
+  if (nextOrder === state.modeOrder || !state.scale) {
+    state.modeOrder = nextOrder;
+    render();
+    return;
+  }
+
+  const modulus = state.scale.cardinality;
+  const currentCycle = Number(els.cycleStep.value || 1);
+  const span = trueGeneratorSpan(state.scale);
+  const inverseSpan = modularInverse(span, modulus);
+  const nextCycle =
+    nextOrder === MODE_ORDERS.generator
+      ? mod(currentCycle * inverseSpan, modulus)
+      : mod(currentCycle * span, modulus);
+
+  state.modeOrder = nextOrder;
+  els.cycleStep.value = String(nextCycle === 0 ? modulus : nextCycle);
+  state.cycleStepTouched = true;
   render();
 });
 els.cycleStep.addEventListener("change", () => {
