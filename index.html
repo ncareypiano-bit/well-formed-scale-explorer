@@ -69,7 +69,8 @@
             <p>The header displays:</p>
             <ul>
               <li><code>Step pattern</code> in <code>A/B</code></li>
-              <li><code>Cycle pattern</code> in <code>X/Y</code></li>
+              <li><code>Cycle pattern</code> in <code>a/b</code></li>
+              <li><code>Cycle folding</code> in <code>x/y</code></li>
               <li><code>Generator span</code>, the cycle corresponding to generator order</li>
             </ul>
             <p>The interval table below the cycle controls shows the two interval classes of the selected cycle as frequency ratios and cents. In the circle view, the same colors are used on the cycle segments.</p>
@@ -297,9 +298,14 @@
             </label>
           </div>
           <div class="explorer-meta">
-            <p><strong>Step pattern</strong> <span id="pattern-line"></span></p>
-            <p><strong>Cycle pattern</strong> <span id="cycle-pattern-line"></span></p>
-            <p><strong>Generator span</strong> <span id="generator-span-line"></span></p>
+            <div class="explorer-meta-row">
+              <p><strong>Step pattern</strong> <span id="pattern-line"></span></p>
+              <p><strong>Generator span</strong> <span id="generator-span-line"></span></p>
+            </div>
+            <div class="explorer-meta-row">
+              <p><strong>Cycle pattern</strong> <span id="cycle-pattern-line"></span></p>
+              <p><strong>Cycle folding</strong> <span id="cycle-folding-line"></span></p>
+            </div>
           </div>
         </div>
 
@@ -321,6 +327,6 @@
       </section>
     </main>
 
-    <script type="module" src="./app.js?v=24"></script>
+    <script type="module" src="./app.js?v=30"></script>
   </body>
 </html>

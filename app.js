@@ -5,7 +5,6 @@ import {
   buildScaleFromGenerator,
   buildScaleFromStepStructure,
   circleRows,
-  cycleGroupsForCircle,
   displayNumber,
   editableNumber,
   evaluateExpression,
@@ -16,7 +15,7 @@ import {
   orderedModes,
   parseGeneratorConfiguration,
   parseBaseFrequencyInput,
-} from "./scale.js?v=12";
+} from "./scale.js?v=13";
 import { AudioEngine } from "./audio.js?v=2";
 
 const state = {
@@ -86,6 +85,7 @@ const els = {
   generatorSpanLine: document.querySelector("#generator-span-line"),
   patternLine: document.querySelector("#pattern-line"),
   cyclePatternLine: document.querySelector("#cycle-pattern-line"),
+  cycleFoldingLine: document.querySelector("#cycle-folding-line"),
   intervalPanel: document.querySelector("#interval-panel"),
   summaryLine: document.querySelector("#summary-line"),
 };
@@ -123,8 +123,59 @@ function renderStepInputMode() {
   els.typeASizeLabel.classList.toggle("hidden", ratioMode);
 }
 
+function modalCycleRows(scale) {
+  const baseRows = circleRows(scale).map((row) => ({
+    ...row,
+    positionIndex: row.displayDegree,
+  }));
+
+  if (state.modeOrder !== MODE_ORDERS.generator) {
+    return baseRows;
+  }
+
+  const tonicGeneratorIndex = baseRows[0]?.fromGeneratorIndex ?? 0;
+  return [...baseRows]
+    .map((row) => ({
+      ...row,
+      generatorDistance:
+        ((row.fromGeneratorIndex - tonicGeneratorIndex) % scale.cardinality + scale.cardinality) %
+        scale.cardinality,
+    }))
+    .sort((left, right) => left.generatorDistance - right.generatorDistance)
+    .map((row, index) => ({
+      ...row,
+      displayDegree: index,
+    }));
+}
+
+function cycleGroupsForSelectedOrder(scale, stepSize) {
+  const rows = modalCycleRows(scale);
+  const size = rows.length;
+  const step = ((stepSize % size) + size) % size;
+  if (step === 0) {
+    throw new Error("Cycle step must be between 1 and N-1.");
+  }
+
+  const visited = new Array(size).fill(false);
+  const groups = [];
+
+  for (let start = 0; start < size; start += 1) {
+    if (visited[start]) continue;
+    const group = [];
+    let index = start;
+    while (!visited[index]) {
+      visited[index] = true;
+      group.push(rows[index]);
+      index = (index + step) % size;
+    }
+    groups.push(group);
+  }
+
+  return groups;
+}
+
 function generatorCycleDefaultStep(scale) {
-  const rows = circleRows(scale);
+  const rows = modalCycleRows(scale);
   const tonicGeneratorIndex = rows[0]?.fromGeneratorIndex ?? 0;
   const generatorRow = rows.find((row) => {
     const distance =
@@ -356,14 +407,14 @@ function renderCycleStepOptions(scale) {
     option.textContent = String(step);
     els.cycleStep.appendChild(option);
   }
-  const fallback = generatorCycleDefaultStep(scale);
+  const fallback = 1;
   const nextValue =
     state.cycleStepTouched && previous >= 1 && previous < scale.cardinality ? previous : fallback;
   els.cycleStep.value = String(nextValue);
 }
 
 function selectedCycleGroups(scale) {
-  return cycleGroupsForCircle(scale, Number(els.cycleStep.value || 1));
+  return cycleGroupsForSelectedOrder(scale, Number(els.cycleStep.value || 1));
 }
 
 function renderCosetOptions(scale) {
@@ -454,6 +505,25 @@ function cyclePlaybackEvents(scale) {
     segmentTo: firstRow.displayDegree,
   };
 
+  if (state.modeOrder === MODE_ORDERS.generator) {
+    if (rows.length === 1) {
+      return [lowFirst, lowFirst];
+    }
+
+    const middle = rows.slice(1).map((row, index) => ({
+      ...row,
+      activePitchClass: row.pitchClass,
+      segmentFrom: rows[index].displayDegree,
+      segmentTo: row.displayDegree,
+    }));
+
+    return [
+      { ...firstRow, activePitchClass: firstRow.pitchClass, segmentFrom: null, segmentTo: null },
+      ...middle,
+      lowFirst,
+    ];
+  }
+
   if (rows.length === 1) {
     return startHigh ? [highFirst, lowFirst] : [lowFirst, highFirst];
   }
@@ -482,15 +552,36 @@ function cycleLegend(scale) {
   return `Generator span: ${generatorCycleDefaultStep(scale)}`;
 }
 
+function symbolCounts(text, firstSymbol, secondSymbol) {
+  const firstCount = [...text].filter((char) => char === firstSymbol).length;
+  const secondCount = [...text].filter((char) => char === secondSymbol).length;
+  return `(${firstCount},${secondCount})`;
+}
+
 function cyclePatternText(scale) {
   const rows = selectedCycleRows(scale);
   const segments = cycleSegmentKinds(rows);
-  return segments
+  const pattern = segments
     .map((segment) => {
-      if (segment.kind === "small") return "Y";
-      return "X";
+      if (segment.kind === "small") return "b";
+      return "a";
     })
     .join("");
+  return `${pattern} ${symbolCounts(pattern, "a", "b")}`;
+}
+
+function cycleFoldingText(scale) {
+  const rows = selectedCycleRows(scale);
+  if (rows.length === 0) return "";
+
+  const degrees = rows.map((row) => row.positionIndex);
+  degrees.push(rows[0].positionIndex);
+
+  const folding = degrees
+    .slice(0, -1)
+    .map((degree, index) => (degrees[index + 1] - degree > 0 ? "x" : "y"))
+    .join("");
+  return `${folding} ${symbolCounts(folding, "x", "y")}`;
 }
 
 function cycleIntervalRows(scale) {
@@ -604,17 +695,17 @@ function renderKeyboard(scale) {
   );
 
   const cycleRows = selectedCycleRows(scale);
-  const visibleCycleRows = cycleRows.filter((row) => row.displayDegree < scale.cardinality);
-  const pointForDegree = (degree) => ({
-    x: (degree + 0.5) * 68,
+  const visibleCycleRows = cycleRows.filter((row) => row.positionIndex < scale.cardinality);
+  const pointForPosition = (positionIndex) => ({
+    x: (positionIndex + 0.5) * 68,
     y: 34,
   });
 
   if (visibleCycleRows.length > 1) {
     visibleCycleRows.forEach((row, index) => {
       const next = visibleCycleRows[(index + 1) % visibleCycleRows.length];
-      const point = pointForDegree(row.displayDegree);
-      const nextPoint = pointForDegree(next.displayDegree);
+      const point = pointForPosition(row.positionIndex);
+      const nextPoint = pointForPosition(next.positionIndex);
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       const isActive =
         state.activeCycleSegment &&
@@ -699,7 +790,7 @@ function renderCircle(scale) {
   els.keyboard.innerHTML = "";
   els.keyboard.classList.add("circle-surface");
 
-  const rows = circleRows(scale);
+  const rows = modalCycleRows(scale);
   const cycleRows = selectedCycleRows(scale);
   const segmentKinds = cycleSegmentKinds(cycleRows);
   const container = document.createElement("div");
@@ -843,6 +934,7 @@ function render() {
     els.generatorSpanLine.textContent = "";
     els.patternLine.textContent = "";
     els.cyclePatternLine.textContent = "";
+    els.cycleFoldingLine.textContent = "";
     els.analysisPanel.innerHTML = "";
     els.intervalPanel.innerHTML = "";
     els.keyboard.innerHTML = "";
@@ -856,6 +948,7 @@ function render() {
   els.generatorSpanLine.textContent = String(generatorCycleDefaultStep(scale));
   els.patternLine.textContent = scale.displayStepWord || scale.stepWord || "";
   els.cyclePatternLine.textContent = cyclePatternText(scale);
+  els.cycleFoldingLine.textContent = cycleFoldingText(scale);
   renderIntervalPanel(scale);
   renderExplorerSurface(scale);
 }

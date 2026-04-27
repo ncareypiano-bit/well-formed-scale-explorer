@@ -175,7 +175,9 @@ function continuedFractionApproximants(value, maxTerms = 15, maxDenominator = 60
     });
 
     if (index >= 1 && term >= 2) {
-      for (let semi = 1; semi < term; semi += 1) {
+      const maxSemi = Math.floor((maxDenominator - prev2Den) / prev1Den);
+      const semiLimit = Math.min(term - 1, maxSemi);
+      for (let semi = 1; semi <= semiLimit; semi += 1) {
         const semiNum = semi * prev1Num + prev2Num;
         const semiDen = semi * prev1Den + prev2Den;
         if (!Number.isFinite(semiDen) || semiDen > maxDenominator) {
@@ -384,7 +386,7 @@ export function buildScaleFromStepStructure({
   }
 
   const typeBCount = cardinality - typeACount;
-  const degenerate = typeACount === 0 || typeBCount === 0;
+  let degenerate = typeACount === 0 || typeBCount === 0;
 
   if (!degenerate && gcd(typeBCount, cardinality) !== 1) {
     throw new Error("Type A count must define a generated well-formed scale for this N.");
@@ -399,9 +401,16 @@ export function buildScaleFromStepStructure({
       if (!(stepA > 0)) {
         throw new Error("Type A size must be positive.");
       }
+      const maxTypeASize = typeACount > 0 ? 1 / typeACount : Infinity;
+      if (typeACount > 0 && stepA - maxTypeASize > EPSILON) {
+        throw new Error(`Type A size must be less than or equal to 1/${typeACount}.`);
+      }
+      if (typeACount > 0 && Math.abs(stepA - maxTypeASize) <= EPSILON) {
+        degenerate = true;
+      }
       stepB = (1 - typeACount * stepA) / typeBCount;
-      if (!(stepB > 0)) {
-        throw new Error("Type A size is too large for the chosen cardinality and count.");
+      if (!degenerate && !(stepB > 0)) {
+        throw new Error(`Type A size must be less than or equal to 1/${typeACount}.`);
       }
     } else {
       const parsedRatioA = evaluateExpression(ratioA);
