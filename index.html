@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Well-Formed Scale Explorer</title>
-    <link rel="stylesheet" href="./styles.css?v=13" />
+    <link rel="stylesheet" href="./styles.css?v=15" />
   </head>
   <body>
     <main class="app-shell">
@@ -284,11 +284,11 @@
             <label class="inline-control">
               <span>Timbre</span>
               <select id="timbre-select">
-                <option value="organ">Organ</option>
-                <option value="sine">Sine</option>
                 <option value="clarinet">Clarinet</option>
                 <option value="flute">Flute</option>
+                <option value="organ">Organ</option>
                 <option value="plucked">Plucked</option>
+                <option value="sine">Sine</option>
               </select>
             </label>
             <label class="inline-control">
@@ -325,8 +325,32 @@
         <div id="keyboard" class="keyboard" tabindex="0" aria-label="Scale explorer surface"></div>
         <p id="summary-line" class="summary-line"></p>
       </section>
+
+      <section class="panel export-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Export / Import</h2>
+          </div>
+        </div>
+        <div class="controls-grid">
+          <label>
+            <span>Scale name</span>
+            <input
+              id="scale-name-input"
+              type="text"
+              placeholder="WFS"
+            />
+          </label>
+        </div>
+        <div class="action-row export-actions">
+          <button id="export-data">Export scale data</button>
+          <button id="import-data" class="secondary-button">Import scale data</button>
+          <button id="export-scala" class="secondary-button">Export Scala (.scl)</button>
+          <input id="import-data-file" type="file" accept=".txt,.wfse,text/plain" class="hidden" />
+        </div>
+      </section>
     </main>
 
-    <script type="module" src="./app.js?v=34"></script>
+    <script type="module" src="./app.js?v=36"></script>
   </body>
 </html>

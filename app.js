@@ -16,7 +16,7 @@ import {
   parseGeneratorConfiguration,
   parseBaseFrequencyInput,
 } from "./scale.js?v=13";
-import { AudioEngine } from "./audio.js?v=2";
+import { AudioEngine } from "./audio.js?v=3";
 
 const state = {
   buildMethod: "generator",
@@ -82,6 +82,11 @@ const els = {
   keyboard: document.querySelector("#keyboard"),
   analysisPanel: document.querySelector("#analysis-panel"),
   statusLine: document.querySelector("#status-line"),
+  scaleNameInput: document.querySelector("#scale-name-input"),
+  exportScala: document.querySelector("#export-scala"),
+  exportData: document.querySelector("#export-data"),
+  importData: document.querySelector("#import-data"),
+  importDataFile: document.querySelector("#import-data-file"),
   generatorSpanLine: document.querySelector("#generator-span-line"),
   patternLine: document.querySelector("#pattern-line"),
   cyclePatternLine: document.querySelector("#cycle-pattern-line"),
@@ -96,6 +101,297 @@ function setStatus(message) {
 
 function setSummary(message) {
   els.summaryLine.textContent = message;
+}
+
+function defaultScaleName(scale) {
+  return `WFS N${scale.cardinality} g${editableNumber(scale.generator, 6)} p${editableNumber(scale.period, 6)}`;
+}
+
+function currentScaleName(scale) {
+  return els.scaleNameInput.value.trim() || defaultScaleName(scale);
+}
+
+function updateScaleNamePlaceholder(scale) {
+  els.scaleNameInput.placeholder = scale ? defaultScaleName(scale) : "WFS";
+}
+
+function slugifyFilename(value, fallback = "well-formed-scale") {
+  const cleaned = String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || fallback;
+}
+
+function downloadTextFile(filename, content, mimeType = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportRowsWithTop(scale) {
+  if (scale.displayRows && scale.displayRows.length >= scale.cardinality + 1) {
+    return scale.displayRows.slice(0, scale.cardinality + 1);
+  }
+
+  const baseRows = scale.rows.slice(0, scale.cardinality);
+  if (baseRows.length === 0) return [];
+  const first = baseRows[0];
+  const top = {
+    ...first,
+    scaleDegree: scale.cardinality,
+    pitchClass: first.pitchClass + 1,
+    cents: first.cents + 1200 * Math.log2(scale.period),
+    frequency: first.frequency * scale.period,
+  };
+  return [...baseRows, top];
+}
+
+function approximateRational(value, maxDenominator = 1048576, tolerance = 1e-10) {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  if (Math.abs(value - Math.round(value)) <= tolerance) {
+    const numerator = Math.round(value);
+    return numerator <= 2147483647 ? { numerator, denominator: 1 } : null;
+  }
+
+  let x = value;
+  let a = Math.floor(x);
+  let hPrev = 1;
+  let kPrev = 0;
+  let h = a;
+  let k = 1;
+
+  while (k <= maxDenominator && Math.abs(h / k - value) > tolerance) {
+    const fraction = x - a;
+    if (Math.abs(fraction) < 1e-15) break;
+    x = 1 / fraction;
+    a = Math.floor(x);
+    const hNext = a * h + hPrev;
+    const kNext = a * k + kPrev;
+    if (
+      !Number.isFinite(hNext) ||
+      !Number.isFinite(kNext) ||
+      kNext > maxDenominator ||
+      hNext > 2147483647 ||
+      kNext > 2147483647
+    ) {
+      break;
+    }
+    hPrev = h;
+    kPrev = k;
+    h = hNext;
+    k = kNext;
+  }
+
+  return Math.abs(h / k - value) <= tolerance ? { numerator: h, denominator: k } : null;
+}
+
+function formatScalaPitchValue(relativePitch, period) {
+  const ratio = period ** relativePitch;
+  const rational = approximateRational(ratio);
+  if (rational) {
+    return rational.denominator === 1
+      ? String(rational.numerator)
+      : `${rational.numerator}/${rational.denominator}`;
+  }
+  return (1200 * relativePitch * Math.log2(period)).toFixed(6);
+}
+
+function buildScalaContent(scale) {
+  const name = currentScaleName(scale);
+  const filename = `${slugifyFilename(name)}.scl`;
+  const rows = exportRowsWithTop(scale);
+  const tonicPitchClass = rows[0]?.pitchClass ?? 0;
+  const pitchLines = rows
+    .slice(1)
+    .map((row) => formatScalaPitchValue(row.pitchClass - tonicPitchClass, scale.period));
+
+  const content = [
+    `! ${filename}`,
+    "!",
+    name,
+    ` ${scale.cardinality}`,
+    "!",
+    ...pitchLines.map((line) => ` ${line}`),
+    "",
+  ].join("\n");
+
+  return { filename, content };
+}
+
+function buildScaleDataContent(scale) {
+  const name = currentScaleName(scale);
+  const rows = exportRowsWithTop(scale);
+  const tonicPitchClass = rows[0]?.pitchClass ?? 0;
+  const totalCents = 1200 * Math.log2(scale.period);
+  const data = analysisPanelData(scale);
+  const filename = `${slugifyFilename(name)}-data.txt`;
+  const generatorMeta = {
+    period: els.periodInput.value.trim(),
+    generatorMode: els.generatorMode.value,
+    generatorInput: els.generatorInput.value.trim(),
+    cardinality: els.cardinalityInput.value,
+    baseFrequency: els.baseFrequencyInput.value.trim(),
+  };
+  const stepMeta = {
+    period: els.stepPeriodInput.value.trim(),
+    cardinality: els.stepCardinalityInput.value,
+    typeACount: els.typeACountInput.value,
+    inputMode: els.stepInputMode.value,
+    ratioA: els.ratioAInput.value.trim(),
+    ratioB: els.ratioBInput.value.trim(),
+    typeASize: els.typeASizeInput.value.trim(),
+    baseFrequency: els.stepBaseFrequencyInput.value.trim(),
+  };
+
+  const header = [
+    "WFSE scale data v1",
+    `scale_name: ${name}`,
+    `active_build_method: ${state.activeBuildMethod}`,
+    `selected_mode: ${currentModeValue()}`,
+    `mode_order: ${state.modeOrder}`,
+    `generator_period: ${generatorMeta.period}`,
+    `generator_mode: ${generatorMeta.generatorMode}`,
+    `generator_input: ${generatorMeta.generatorInput}`,
+    `generator_cardinality: ${generatorMeta.cardinality}`,
+    `generator_base_frequency: ${generatorMeta.baseFrequency}`,
+    `step_period: ${stepMeta.period}`,
+    `step_cardinality: ${stepMeta.cardinality}`,
+    `step_type_a_count: ${stepMeta.typeACount}`,
+    `step_input_mode: ${stepMeta.inputMode}`,
+    `step_ratio_a: ${stepMeta.ratioA}`,
+    `step_ratio_b: ${stepMeta.ratioB}`,
+    `step_type_a_size: ${stepMeta.typeASize}`,
+    `step_base_frequency: ${stepMeta.baseFrequency}`,
+    "",
+    "Well-Formed Scale Explorer",
+    "",
+    `Scale name: ${name}`,
+    `Build method: ${state.activeBuildMethod === "generator" ? "Generator Build" : "Scale Step Build"}`,
+    `Selected mode: ${currentModeValue()}`,
+    `Mode order: ${state.modeOrder === MODE_ORDERS.generator ? "Generator" : "Step"}`,
+    "",
+    "Cardinalities",
+    ...data.cardinalities.map((item) =>
+      `${item.label}\t${item.value}${item.note ? `\t(${item.note})` : ""}`
+    ),
+    "",
+    "Values",
+    "Item\tFreq ratio\tCents",
+    ...data.values.map((item) => `${item.label}\t${item.raw}\t${item.cents}`),
+    "",
+    "Scale",
+    `Period range:\t1 to ${displayNumber(scale.period, 6)}`,
+    `Cents range:\t0 to ${displayNumber(totalCents, 6)}`,
+    "",
+    "Degree\tFreq ratio\tCents",
+    ...rows.map((row, index) => {
+      const relativePitch = row.pitchClass - tonicPitchClass;
+      const ratio = scale.period ** relativePitch;
+      const cents = 1200 * relativePitch * Math.log2(scale.period);
+      return `${index}\t${displayNumber(ratio, 6)}\t${displayNumber(cents, 6)}`;
+    }),
+    "",
+  ];
+
+  return { filename, content: header.join("\n") };
+}
+
+function parseScaleDataContent(text) {
+  const lines = String(text).replace(/\r\n/g, "\n").split("\n");
+  if (lines[0]?.trim() !== "WFSE scale data v1") {
+    throw new Error("This does not look like a Well-Formed Scale Explorer data file.");
+  }
+
+  const metadata = {};
+  let index = 1;
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    index += 1;
+    if (!line) break;
+    const separator = line.indexOf(":");
+    if (separator === -1) continue;
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    metadata[key] = value;
+  }
+
+  return metadata;
+}
+
+function importScaleData(metadata) {
+  const required = [
+    "active_build_method",
+    "selected_mode",
+    "mode_order",
+    "generator_period",
+    "generator_mode",
+    "generator_input",
+    "generator_cardinality",
+    "generator_base_frequency",
+    "step_period",
+    "step_cardinality",
+    "step_type_a_count",
+    "step_input_mode",
+    "step_ratio_a",
+    "step_ratio_b",
+    "step_type_a_size",
+    "step_base_frequency",
+  ];
+
+  required.forEach((key) => {
+    if (!(key in metadata)) {
+      throw new Error(`Scale data file is missing "${key}".`);
+    }
+  });
+
+  if (metadata.scale_name) {
+    els.scaleNameInput.value = metadata.scale_name;
+  }
+
+  els.periodInput.value = metadata.generator_period;
+  els.generatorMode.value = metadata.generator_mode;
+  els.generatorInput.value = metadata.generator_input;
+  els.cardinalityInput.innerHTML = "";
+  const option = document.createElement("option");
+  option.value = metadata.generator_cardinality;
+  option.textContent = metadata.generator_cardinality;
+  els.cardinalityInput.appendChild(option);
+  els.cardinalityInput.value = metadata.generator_cardinality;
+  els.baseFrequencyInput.value = metadata.generator_base_frequency;
+
+  els.stepPeriodInput.value = metadata.step_period;
+  els.stepCardinalityInput.value = metadata.step_cardinality;
+  els.typeACountInput.value = metadata.step_type_a_count;
+  els.stepInputMode.value = metadata.step_input_mode;
+  els.ratioAInput.value = metadata.step_ratio_a;
+  els.ratioBInput.value = metadata.step_ratio_b;
+  els.typeASizeInput.value = metadata.step_type_a_size;
+  els.stepBaseFrequencyInput.value = metadata.step_base_frequency;
+
+  state.buildMethod = metadata.active_build_method === "step" ? "step" : "generator";
+  state.activeBuildMethod = state.buildMethod;
+  renderStepInputMode();
+
+  const importedModeOrder =
+    metadata.mode_order === MODE_ORDERS.generator ? MODE_ORDERS.generator : MODE_ORDERS.step;
+  state.modeOrder = importedModeOrder;
+  els.modeOrder.value = importedModeOrder;
+
+  rebuildScale({ syncPanels: false, resetCycleSelection: true });
+
+  const modeValue = Number(metadata.selected_mode || 0);
+  els.modeSelect.value = String(modeValue);
+  rebuildScale();
+
+  setStatus("");
+  setSummary("");
 }
 
 function renderBuildMethod() {
@@ -956,6 +1252,7 @@ function render() {
   renderBuildMethod();
   renderExplorerView();
   if (!scale) {
+    updateScaleNamePlaceholder(null);
     els.generatorSpanLine.textContent = "";
     els.patternLine.textContent = "";
     els.cyclePatternLine.textContent = "";
@@ -969,6 +1266,7 @@ function render() {
   renderModeSelect(scale);
   renderCycleStepOptions(scale);
   renderCosetOptions(scale);
+  updateScaleNamePlaceholder(scale);
   renderAnalysisPanel(scale);
   els.generatorSpanLine.textContent = String(trueGeneratorSpan(scale));
   els.patternLine.textContent = scale.stepWord || "";
@@ -1006,7 +1304,7 @@ async function playCycleSequence(rows, label) {
   const interval = Math.max(0.12, Number(els.durationSlider.value) * 0.48);
   audio.schedulePlayback(rows, {
     timbre: els.timbreSelect.value,
-    duration: Math.max(Number(els.durationSlider.value), interval * 1.25),
+    duration: interval,
     interval,
     onStep: (row) => {
       const degree = row.displayDegree ?? row.scaleDegree;
@@ -1169,6 +1467,34 @@ els.timbreSelect.addEventListener("change", () => {
 });
 els.durationSlider.addEventListener("input", () => {
   els.durationReadout.textContent = Number(els.durationSlider.value).toFixed(2);
+});
+els.exportScala.addEventListener("click", () => {
+  if (!state.scale) return;
+  const { filename, content } = buildScalaContent(state.scale);
+  downloadTextFile(filename, content, "text/plain;charset=utf-8");
+  setSummary(`Exported ${filename}`);
+});
+els.exportData.addEventListener("click", () => {
+  if (!state.scale) return;
+  const { filename, content } = buildScaleDataContent(state.scale);
+  downloadTextFile(filename, content, "text/plain;charset=utf-8");
+  setSummary(`Exported ${filename}`);
+});
+els.importData.addEventListener("click", () => {
+  els.importDataFile.click();
+});
+els.importDataFile.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const metadata = parseScaleDataContent(text);
+    importScaleData(metadata);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : String(error));
+  } finally {
+    els.importDataFile.value = "";
+  }
 });
 
 els.playCycle.addEventListener("click", () => {

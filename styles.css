@@ -389,6 +389,10 @@ button:hover {
   align-items: stretch;
 }
 
+.export-actions {
+  margin-top: 0;
+}
+
 .analysis-card {
   display: flex;
   flex-direction: column;
