@@ -720,6 +720,16 @@ button:hover {
   pointer-events: none;
 }
 
+.circle-label-stacked {
+  dominant-baseline: auto;
+}
+
+.circle-label-alias {
+  font-size: 10px;
+  font-weight: 600;
+  fill: rgba(95, 73, 18, 0.72);
+}
+
 @media (max-width: 760px) {
   .page-header,
   .keyboard-header {

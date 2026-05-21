@@ -9,14 +9,20 @@ import {
   editableNumber,
   evaluateExpression,
   formatBaseFrequencyInput,
+  generatorDeformationInfo,
   keyboardItems,
   keyboardLabel,
   MODE_ORDERS,
   orderedModes,
   parseGeneratorConfiguration,
   parseBaseFrequencyInput,
-} from "./scale.js?v=13";
+} from "./scale.js?v=17";
 import { AudioEngine } from "./audio.js?v=3";
+
+const CIRCLE_DRAG_THRESHOLD_PX = 8;
+const CIRCLE_DEFORMATION_EPSILON = 1e-12;
+const CIRCLE_DRAG_GAIN = 0.45;
+const CIRCLE_COLLAPSE_DISTANCE_PX = 0.25;
 
 const state = {
   buildMethod: "generator",
@@ -38,6 +44,10 @@ const state = {
   activePitchClasses: new Set(),
   activeDisplayDegrees: new Set(),
   activeCycleSegment: null,
+  circleDeformation: {
+    previewGeneratorValue: null,
+    dragSession: null,
+  },
 };
 
 const audio = new AudioEngine();
@@ -424,18 +434,22 @@ function modalCycleRows(scale) {
     ...row,
     positionIndex: row.displayDegree,
   }));
+  const tonicGeneratorIndex = baseRows[0]?.fromGeneratorIndex ?? 0;
+  const aliasedRows = baseRows.map((row) => ({
+    ...row,
+    generatorOrderIndex:
+      ((row.fromGeneratorIndex - tonicGeneratorIndex) % scale.cardinality + scale.cardinality) %
+      scale.cardinality,
+  }));
 
   if (state.modeOrder !== MODE_ORDERS.generator) {
-    return baseRows;
+    return aliasedRows;
   }
 
-  const tonicGeneratorIndex = baseRows[0]?.fromGeneratorIndex ?? 0;
-  return [...baseRows]
+  return [...aliasedRows]
     .map((row) => ({
       ...row,
-      generatorDistance:
-        ((row.fromGeneratorIndex - tonicGeneratorIndex) % scale.cardinality + scale.cardinality) %
-        scale.cardinality,
+      generatorDistance: row.generatorOrderIndex,
     }))
     .sort((left, right) => left.generatorDistance - right.generatorDistance)
     .map((row, index) => ({
@@ -446,6 +460,106 @@ function modalCycleRows(scale) {
 
 function mod(value, modulus) {
   return ((value % modulus) + modulus) % modulus;
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+function normalizeAngleDelta(delta) {
+  if (delta <= -Math.PI) {
+    return delta + 2 * Math.PI;
+  }
+  if (delta > Math.PI) {
+    return delta - 2 * Math.PI;
+  }
+  return delta;
+}
+
+function angleFromPointer(clientX, clientY, centerPoint) {
+  return Math.atan2(centerPoint.y - clientY, clientX - centerPoint.x);
+}
+
+function circleDeformationInfoForScale(scale) {
+  if (state.activeBuildMethod !== "generator") {
+    return null;
+  }
+  return generatorDeformationInfo(scale, CIRCLE_DEFORMATION_EPSILON);
+}
+
+function clearCircleDeformationState() {
+  state.circleDeformation.previewGeneratorValue = null;
+  state.circleDeformation.dragSession = null;
+}
+
+function previewCircleRows(scale, rows) {
+  const previewGeneratorValue = state.circleDeformation.previewGeneratorValue;
+  if (previewGeneratorValue === null || state.activeBuildMethod !== "generator") {
+    return rows;
+  }
+
+  const tonicGeneratorIndex = rows[0]?.fromGeneratorIndex ?? 0;
+  return rows.map((row) => ({
+    ...row,
+    relativePitchClass: mod(
+      mod(row.fromGeneratorIndex - tonicGeneratorIndex, scale.cardinality) * previewGeneratorValue,
+      1
+    ),
+  }));
+}
+
+function circlePitchClassSeparation(left, right) {
+  const directDistance = Math.abs(left - right);
+  return Math.min(directDistance, 1 - directDistance);
+}
+
+function visibleCircleRows(rows, radius) {
+  if (rows.length <= 1) {
+    return rows;
+  }
+
+  const collapsePitchClassDistance =
+    2 * Math.asin(Math.min(1, CIRCLE_COLLAPSE_DISTANCE_PX / (2 * radius))) / (2 * Math.PI);
+  const sortedRows = [...rows].sort((left, right) => (
+    left.relativePitchClass - right.relativePitchClass || left.displayDegree - right.displayDegree
+  ));
+  const groups = [];
+
+  for (let index = 0; index < sortedRows.length; index += 1) {
+    const group = [sortedRows[index]];
+    while (
+      index + 1 < sortedRows.length &&
+      circlePitchClassSeparation(
+        sortedRows[index + 1].relativePitchClass,
+        sortedRows[index].relativePitchClass
+      ) <= collapsePitchClassDistance
+    ) {
+      group.push(sortedRows[index + 1]);
+      index += 1;
+    }
+    groups.push(group);
+  }
+
+  if (
+    groups.length > 1 &&
+    circlePitchClassSeparation(
+      groups[0][0].relativePitchClass,
+      groups[groups.length - 1][groups[groups.length - 1].length - 1].relativePitchClass
+    ) <= collapsePitchClassDistance
+  ) {
+    groups[0] = [...groups[groups.length - 1], ...groups[0]];
+    groups.pop();
+  }
+
+  const visibleDegrees = new Set();
+  groups.forEach((group) => {
+    const visibleRow = group.reduce((best, candidate) => (
+      candidate.displayDegree < best.displayDegree ? candidate : best
+    ));
+    visibleDegrees.add(visibleRow.displayDegree);
+  });
+
+  return rows.filter((row) => visibleDegrees.has(row.displayDegree));
 }
 
 function modularInverse(value, modulus) {
@@ -552,14 +666,21 @@ function buildCurrentScale() {
   return applyMode(baseScale, currentModeValue());
 }
 
-function populateCardinalityOptions(options, selectedValue) {
+function populateCardinalityOptions(options, selectedValue, { preserveSelectedValue = false } = {}) {
   if (options.length === 0) {
     throw new Error("No well-formed cardinalities were found for this generator.");
   }
 
-  const nextValue = options.includes(selectedValue) ? selectedValue : options[0];
+  const resolvedOptions =
+    preserveSelectedValue &&
+    Number.isInteger(selectedValue) &&
+    selectedValue > 1 &&
+    !options.includes(selectedValue)
+      ? [...new Set([...options, selectedValue])].sort((left, right) => left - right)
+      : options;
+  const nextValue = resolvedOptions.includes(selectedValue) ? selectedValue : resolvedOptions[0];
   els.cardinalityInput.innerHTML = "";
-  options.forEach((value) => {
+  resolvedOptions.forEach((value) => {
     const option = document.createElement("option");
     option.value = String(value);
     option.textContent = String(value);
@@ -569,9 +690,12 @@ function populateCardinalityOptions(options, selectedValue) {
   state.cardinality = nextValue;
 }
 
-function refreshCardinalityOptions(preferredValue = Number(els.cardinalityInput.value || state.cardinality)) {
+function refreshCardinalityOptions(
+  preferredValue = Number(els.cardinalityInput.value || state.cardinality),
+  { preserveSelectedValue = false } = {}
+) {
   const parsed = parseGeneratorConfiguration(numericGeneratorInputs());
-  populateCardinalityOptions(parsed.availableCardinalities, preferredValue);
+  populateCardinalityOptions(parsed.availableCardinalities, preferredValue, { preserveSelectedValue });
 }
 
 function syncStepControlsFromScale(scale) {
@@ -610,11 +734,18 @@ function syncGeneratorControlsFromScale(scale) {
   );
 }
 
-function rebuildScale({ syncPanels = false, resetCycleSelection = false } = {}) {
+function rebuildScale({
+  syncPanels = false,
+  resetCycleSelection = false,
+  preserveGeneratorCardinality = false,
+} = {}) {
   try {
     audio.stopAll();
+    clearCircleDeformationState();
     if (state.activeBuildMethod === "generator") {
-      refreshCardinalityOptions();
+      refreshCardinalityOptions(undefined, {
+        preserveSelectedValue: preserveGeneratorCardinality,
+      });
     }
     state.scale = buildCurrentScale();
     if (resetCycleSelection) {
@@ -634,6 +765,7 @@ function rebuildScale({ syncPanels = false, resetCycleSelection = false } = {}) 
     setStatus("");
     render();
   } catch (error) {
+    clearCircleDeformationState();
     state.scale = null;
     setStatus(error instanceof Error ? error.message : String(error));
     render();
@@ -734,8 +866,35 @@ function renderCycleStepOptions(scale) {
   els.cycleStep.value = String(nextValue);
 }
 
-function selectedCycleGroups(scale) {
-  return cycleGroupsForSelectedOrder(scale, Number(els.cycleStep.value || 1));
+function cycleRowsForCurrentView(scale, { usePreview = false } = {}) {
+  const rows = modalCycleRows(scale);
+  return usePreview ? previewCircleRows(scale, rows) : rows;
+}
+
+function selectedCycleGroups(scale, { usePreview = false } = {}) {
+  const rows = cycleRowsForCurrentView(scale, { usePreview });
+  const size = rows.length;
+  const step = mod(Number(els.cycleStep.value || 1), size);
+  if (size === 0 || step === 0) {
+    return [];
+  }
+
+  const visited = new Array(size).fill(false);
+  const groups = [];
+
+  for (let start = 0; start < size; start += 1) {
+    if (visited[start]) continue;
+    const group = [];
+    let index = start;
+    while (!visited[index]) {
+      visited[index] = true;
+      group.push(rows[index]);
+      index = (index + step) % size;
+    }
+    groups.push(group);
+  }
+
+  return groups;
 }
 
 function renderCosetOptions(scale) {
@@ -755,8 +914,8 @@ function renderCosetOptions(scale) {
   els.cosetControl.classList.toggle("hidden", groups.length <= 1);
 }
 
-function selectedCycleRows(scale) {
-  const groups = selectedCycleGroups(scale);
+function selectedCycleRows(scale, { usePreview = false } = {}) {
+  const groups = selectedCycleGroups(scale, { usePreview });
   const cosetIndex = Number(els.cosetSelect.value || 0);
   return groups[cosetIndex] ?? groups[0] ?? [];
 }
@@ -905,8 +1064,8 @@ function cycleFoldingText(scale) {
   return `${folding} ${symbolCounts(folding, "x", "y")}`;
 }
 
-function cycleIntervalRows(scale) {
-  const rows = selectedCycleRows(scale);
+function cycleIntervalRows(scale, { usePreview = false } = {}) {
+  const rows = selectedCycleRows(scale, { usePreview });
   const segments = cycleSegmentKinds(rows);
   const kinds = [...new Set(segments.map((segment) => segment.kind))];
   const orderedKinds = ["large", "small", "single"].filter((kind) => kinds.includes(kind));
@@ -925,9 +1084,9 @@ function cycleIntervalRows(scale) {
   });
 }
 
-function renderIntervalPanel(scale) {
+function renderIntervalPanel(scale, { usePreview = false } = {}) {
   els.intervalPanel.innerHTML = "";
-  const rows = cycleIntervalRows(scale);
+  const rows = cycleIntervalRows(scale, { usePreview });
 
   const table = document.createElement("table");
   table.className = "interval-table";
@@ -1111,9 +1270,15 @@ function renderCircle(scale) {
   els.keyboard.innerHTML = "";
   els.keyboard.classList.add("circle-surface");
 
-  const rows = modalCycleRows(scale);
-  const cycleRows = selectedCycleRows(scale);
+  const center = 310;
+  const ringRadius = 220;
+  const labelRadius = 260;
+  const pointRadius = 18;
+  const rows = cycleRowsForCurrentView(scale, { usePreview: true });
+  const renderedRows = visibleCircleRows(rows, ringRadius);
+  const cycleRows = selectedCycleRows(scale, { usePreview: true });
   const segmentKinds = cycleSegmentKinds(cycleRows);
+  const deformationInfo = circleDeformationInfoForScale(scale);
   const container = document.createElement("div");
   container.className = "circle-stage";
 
@@ -1121,11 +1286,47 @@ function renderCircle(scale) {
   const svg = document.createElementNS(svgNS, "svg");
   svg.setAttribute("viewBox", "0 0 620 620");
   svg.setAttribute("class", "scale-circle-svg");
+  const tonicGeneratorIndex = rows[0]?.fromGeneratorIndex ?? 0;
 
-  const center = 310;
-  const ringRadius = 220;
-  const labelRadius = 260;
-  const pointRadius = 18;
+  const playCircleTone = async (row, index, raised) => {
+    const frequency = raised ? row.frequency * scale.period : row.frequency;
+    const summary = `${raised ? "Raised scale tone" : "Scale tone"} at ${displayNumber(frequency)} Hz`;
+    await playScaleTone(`circle-${index}-${raised ? "raised" : "plain"}`, frequency, summary);
+    activateKeyboardPitch(row.pitchClass, row.displayDegree);
+    renderExplorerSurface(scale);
+    setTimeout(() => {
+      deactivateKeyboardPitch(row.pitchClass, row.displayDegree);
+      renderExplorerSurface(scale);
+    }, Number(els.durationSlider.value) * 900);
+  };
+
+  const commitCircleDeformation = (nextGeneratorValue) => {
+    const committedGeneratorValue = clamp(
+      nextGeneratorValue,
+      deformationInfo?.minimum ?? nextGeneratorValue,
+      deformationInfo?.maximum ?? nextGeneratorValue
+    );
+    clearCircleDeformationState();
+
+    if (Math.abs(committedGeneratorValue - scale.generatorValue) <= 1e-10) {
+      renderExplorerSurface(scale);
+      return;
+    }
+
+    if (els.generatorMode.value === "log") {
+      els.generatorInput.value = editableNumber(committedGeneratorValue);
+    } else {
+      els.generatorInput.value = editableNumber(scale.period ** committedGeneratorValue);
+    }
+
+    state.activeBuildMethod = "generator";
+    setSummary(`Deformed scale committed at log_p(g) = ${displayNumber(committedGeneratorValue, 6)}`);
+    rebuildScale({
+      syncPanels: true,
+      resetCycleSelection: false,
+      preserveGeneratorCardinality: false,
+    });
+  };
 
   const ring = document.createElementNS(svgNS, "circle");
   ring.setAttribute("class", "circle-ring");
@@ -1158,7 +1359,7 @@ function renderCircle(scale) {
     });
   }
 
-  rows.forEach((row, index) => {
+  renderedRows.forEach((row) => {
     const point = circlePointPosition(row.relativePitchClass, ringRadius, center);
     const labelPoint = circlePointPosition(row.relativePitchClass, labelRadius, center);
 
@@ -1175,18 +1376,127 @@ function renderCircle(scale) {
     hit.setAttribute("cx", String(point.x));
     hit.setAttribute("cy", String(point.y));
     hit.setAttribute("r", "28");
-    hit.addEventListener("mousedown", async (event) => {
+    hit.addEventListener("pointerdown", (event) => {
       event.preventDefault();
-      const raised = event.shiftKey;
-      const frequency = raised ? row.frequency * scale.period : row.frequency;
-      const summary = `${raised ? "Raised scale tone" : "Scale tone"} at ${displayNumber(frequency)} Hz`;
-      await playScaleTone(`circle-${index}-${raised ? "raised" : "plain"}`, frequency, summary);
-      activateKeyboardPitch(row.pitchClass, row.displayDegree);
-      renderExplorerSurface(scale);
-      setTimeout(() => {
-        deactivateKeyboardPitch(row.pitchClass, row.displayDegree);
+
+      const circleRect = svg.getBoundingClientRect();
+      const centerPoint = {
+        x: circleRect.left + circleRect.width / 2,
+        y: circleRect.top + circleRect.height / 2,
+      };
+      const generatorDistance = row.generatorOrderIndex ?? mod(
+        row.fromGeneratorIndex - tonicGeneratorIndex,
+        scale.cardinality
+      );
+      const dragSession = {
+        pointerId: event.pointerId,
+        row,
+        index: row.displayDegree,
+        raised: event.shiftKey,
+        startX: event.clientX,
+        startY: event.clientY,
+        centerPoint,
+        generatorDistance,
+        alphaStart: state.circleDeformation.previewGeneratorValue ?? scale.generatorValue,
+        startedDrag: false,
+        lastAngle: angleFromPointer(event.clientX, event.clientY, centerPoint),
+        accumulatedTurns: 0,
+      };
+
+      state.circleDeformation.dragSession = dragSession;
+
+      const handlePointerMove = (moveEvent) => {
+        if (moveEvent.pointerId !== dragSession.pointerId) {
+          return;
+        }
+
+        const distance = Math.hypot(
+          moveEvent.clientX - dragSession.startX,
+          moveEvent.clientY - dragSession.startY
+        );
+
+        if (!dragSession.startedDrag) {
+          if (distance < CIRCLE_DRAG_THRESHOLD_PX) {
+            return;
+          }
+
+          if (!deformationInfo || generatorDistance === 0) {
+            dragSession.suppressedClick = true;
+            return;
+          }
+
+          dragSession.startedDrag = true;
+          dragSession.suppressedClick = true;
+        }
+
+        const angle = angleFromPointer(
+          moveEvent.clientX,
+          moveEvent.clientY,
+          dragSession.centerPoint
+        );
+        dragSession.accumulatedTurns +=
+          normalizeAngleDelta(angle - dragSession.lastAngle) / (2 * Math.PI);
+        dragSession.lastAngle = angle;
+
+        const previewValue = clamp(
+          dragSession.alphaStart -
+            (CIRCLE_DRAG_GAIN * dragSession.accumulatedTurns) / dragSession.generatorDistance,
+          deformationInfo.minimum,
+          deformationInfo.maximum
+        );
+
+        if (Math.abs(previewValue - (state.circleDeformation.previewGeneratorValue ?? scale.generatorValue)) <= 1e-10) {
+          return;
+        }
+
+        state.circleDeformation.previewGeneratorValue = previewValue;
         renderExplorerSurface(scale);
-      }, Number(els.durationSlider.value) * 900);
+        renderIntervalPanel(scale, { usePreview: true });
+      };
+
+      const finishInteraction = async (upEvent, cancelled = false) => {
+        if (upEvent.pointerId !== dragSession.pointerId) {
+          return;
+        }
+
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerUp);
+        window.removeEventListener("pointercancel", handlePointerCancel);
+        state.circleDeformation.dragSession = null;
+
+        if (cancelled) {
+          clearCircleDeformationState();
+          renderExplorerSurface(scale);
+          renderIntervalPanel(scale);
+          return;
+        }
+
+        if (dragSession.startedDrag) {
+          const committedValue =
+            state.circleDeformation.previewGeneratorValue ?? dragSession.alphaStart;
+          commitCircleDeformation(committedValue);
+          return;
+        }
+
+        clearCircleDeformationState();
+        if (!dragSession.suppressedClick) {
+          await playCircleTone(row, row.displayDegree, dragSession.raised || upEvent.shiftKey);
+        } else {
+          renderExplorerSurface(scale);
+          renderIntervalPanel(scale);
+        }
+      };
+
+      const handlePointerUp = (upEvent) => {
+        void finishInteraction(upEvent, false);
+      };
+      const handlePointerCancel = (cancelEvent) => {
+        void finishInteraction(cancelEvent, true);
+      };
+
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerUp);
+      window.addEventListener("pointercancel", handlePointerCancel);
     });
     svg.appendChild(hit);
 
@@ -1194,7 +1504,7 @@ function renderCircle(scale) {
     label.setAttribute("class", "circle-label");
     label.setAttribute("x", String(labelPoint.x));
     label.setAttribute("y", String(labelPoint.y));
-    label.textContent = keyboardLabel(
+    const primaryLabel = keyboardLabel(
       {
         role: "scale",
         displayDegree: row.displayDegree,
@@ -1204,6 +1514,7 @@ function renderCircle(scale) {
       scale,
       els.labelMode.value
     );
+    label.textContent = primaryLabel;
     svg.appendChild(label);
   });
 
@@ -1416,11 +1727,19 @@ els.viewCircle.addEventListener("click", () => {
 
 els.applyGenerator.addEventListener("click", () => {
   state.activeBuildMethod = "generator";
-  rebuildScale({ syncPanels: true, resetCycleSelection: true });
+  rebuildScale({
+    syncPanels: true,
+    resetCycleSelection: true,
+    preserveGeneratorCardinality: false,
+  });
 });
 els.applyStepBuild.addEventListener("click", () => {
   state.activeBuildMethod = "step";
-  rebuildScale({ syncPanels: true, resetCycleSelection: true });
+  rebuildScale({
+    syncPanels: true,
+    resetCycleSelection: true,
+    preserveGeneratorCardinality: false,
+  });
 });
 els.modeSelect.addEventListener("change", () => rebuildScale());
 els.modeOrder.addEventListener("change", () => {
@@ -1452,13 +1771,18 @@ els.cycleStep.addEventListener("change", () => {
 els.cosetSelect.addEventListener("change", render);
 els.cardinalityInput.addEventListener("change", () => {
   state.activeBuildMethod = "generator";
-  rebuildScale({ syncPanels: true, resetCycleSelection: true });
+  rebuildScale({
+    syncPanels: true,
+    resetCycleSelection: true,
+    preserveGeneratorCardinality: false,
+  });
 });
 els.labelMode.addEventListener("change", render);
 els.generatorMode.addEventListener("change", () => {
   rebuildScale({
     syncPanels: state.activeBuildMethod === "generator",
     resetCycleSelection: true,
+    preserveGeneratorCardinality: false,
   });
 });
 els.stepInputMode.addEventListener("change", renderStepInputMode);

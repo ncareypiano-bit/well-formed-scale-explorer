@@ -209,6 +209,81 @@ export function availableCardinalitiesFromGeneratorValue(generatorValue, maxTerm
   )];
 }
 
+function fareyNeighbors(numerator, denominator) {
+  const target = numerator / denominator;
+  let left = null;
+  let right = null;
+
+  for (let candidateDenominator = 1; candidateDenominator <= denominator; candidateDenominator += 1) {
+    for (let candidateNumerator = 0; candidateNumerator <= candidateDenominator; candidateNumerator += 1) {
+      if (gcd(candidateNumerator, candidateDenominator) !== 1) continue;
+
+      const value = candidateNumerator / candidateDenominator;
+      if (Math.abs(value - target) < EPSILON) continue;
+
+      const candidate = {
+        numerator: candidateNumerator,
+        denominator: candidateDenominator,
+        value,
+      };
+
+      if (value < target && (!left || value > left.value)) {
+        left = candidate;
+      }
+
+      if (value > target && (!right || value < right.value)) {
+        right = candidate;
+      }
+    }
+  }
+
+  return { left, right };
+}
+
+export function generatorDeformationInfo(scale, epsilon = 1e-12) {
+  if (!scale || !Number.isFinite(scale.generatorValue) || !(scale.cardinality > 1)) {
+    return null;
+  }
+
+  const approximants = continuedFractionApproximants(
+    scale.generatorValue,
+    15,
+    Math.max(MAX_CARDINALITY, scale.cardinality)
+  );
+  const candidates = approximants.filter((item) => item.denominator === scale.cardinality);
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const anchor = candidates.reduce((best, candidate) => (
+    Math.abs(candidate.value - scale.generatorValue) < Math.abs(best.value - scale.generatorValue)
+      ? candidate
+      : best
+  ));
+
+  const neighbors = fareyNeighbors(anchor.numerator, anchor.denominator);
+  if (!neighbors.left || !neighbors.right) {
+    return null;
+  }
+
+  const minimum = neighbors.left.value + epsilon;
+  const maximum = neighbors.right.value - epsilon;
+  if (!(minimum < maximum)) {
+    return null;
+  }
+
+  return {
+    epsilon,
+    current: scale.generatorValue,
+    anchor,
+    leftNeighbor: neighbors.left,
+    rightNeighbor: neighbors.right,
+    minimum,
+    maximum,
+  };
+}
+
 export function parseGeneratorConfiguration({
   period,
   generatorMode,
@@ -319,12 +394,12 @@ export function buildScaleFromGenerator({
     baseFrequency,
   });
   const { generator, generatorValue, availableCardinalities } = parsed;
+  const selectableCardinalities = [...new Set(availableCardinalities.concat(cardinality))].sort(
+    (left, right) => left - right
+  );
 
   if (!(cardinality > 1)) {
     throw new Error("Cardinality must be greater than 1.");
-  }
-  if (!availableCardinalities.includes(cardinality)) {
-    throw new Error("Cardinality must come from the continued-fraction hierarchy.");
   }
 
   const rawPairs = Array.from({ length: cardinality }, (_, index) => ({
@@ -354,7 +429,7 @@ export function buildScaleFromGenerator({
     generatorValue,
     baseFrequency,
     cardinality,
-    availableCardinalities,
+    availableCardinalities: selectableCardinalities,
     stepPattern: steps,
     stepWord: stepWordFromSteps(steps),
     rows,
