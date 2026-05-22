@@ -1321,7 +1321,7 @@ function renderCircle(scale) {
     rebuildScale({
       syncPanels: true,
       resetCycleSelection: false,
-      preserveGeneratorCardinality: false,
+      preserveGeneratorCardinality: true,
     });
   };
 
