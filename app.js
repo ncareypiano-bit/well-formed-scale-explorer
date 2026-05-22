@@ -22,7 +22,7 @@ import { AudioEngine } from "./audio.js?v=3";
 const CIRCLE_DRAG_THRESHOLD_PX = 8;
 const CIRCLE_DEFORMATION_EPSILON = 1e-12;
 const CIRCLE_DRAG_GAIN = 0.45;
-const CIRCLE_COLLAPSE_DISTANCE_PX = 0.25;
+const CIRCLE_COLLAPSE_DISTANCE_PX = 0.5;
 
 const state = {
   buildMethod: "generator",
@@ -561,17 +561,6 @@ function visibleCircleRows(rows, radius) {
       candidate.displayDegree < best.displayDegree ? candidate : best
     ));
     visibleDegrees.add(visibleRow.displayDegree);
-
-    if (visibleRow.displayDegree === 0 && group.length > 1) {
-      const draggableRow = group
-        .filter((candidate) => candidate.displayDegree > 0)
-        .reduce((best, candidate) => (
-          !best || candidate.displayDegree < best.displayDegree ? candidate : best
-        ), null);
-      if (draggableRow) {
-        visibleDegrees.add(draggableRow.displayDegree);
-      }
-    }
   });
 
   return rows.filter((row) => visibleDegrees.has(row.displayDegree));
