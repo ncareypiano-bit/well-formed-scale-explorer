@@ -554,6 +554,17 @@ function visibleCircleRows(rows, radius) {
       candidate.displayDegree < best.displayDegree ? candidate : best
     ));
     visibleDegrees.add(visibleRow.displayDegree);
+
+    if (visibleRow.displayDegree === 0 && group.length > 1) {
+      const draggableRow = group
+        .filter((candidate) => candidate.displayDegree > 0)
+        .reduce((best, candidate) => (
+          !best || candidate.displayDegree < best.displayDegree ? candidate : best
+        ), null);
+      if (draggableRow) {
+        visibleDegrees.add(draggableRow.displayDegree);
+      }
+    }
   });
 
   return rows.filter((row) => visibleDegrees.has(row.displayDegree));
