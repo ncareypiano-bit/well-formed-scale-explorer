@@ -481,9 +481,6 @@ function angleFromPointer(clientX, clientY, centerPoint) {
 }
 
 function circleDeformationInfoForScale(scale) {
-  if (state.activeBuildMethod !== "generator") {
-    return null;
-  }
   return generatorDeformationInfo(scale, CIRCLE_DEFORMATION_EPSILON);
 }
 
@@ -494,7 +491,7 @@ function clearCircleDeformationState() {
 
 function previewCircleRows(scale, rows) {
   const previewGeneratorValue = state.circleDeformation.previewGeneratorValue;
-  if (previewGeneratorValue === null || state.activeBuildMethod !== "generator") {
+  if (previewGeneratorValue === null) {
     return rows;
   }
 
@@ -1703,6 +1700,30 @@ function handleComputerKeyUp(event) {
   renderExplorerSurface(state.scale);
 }
 
+function handleBuildApplyKeyDown(event) {
+  if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
+    return;
+  }
+  if (!(event.target instanceof HTMLElement)) {
+    return;
+  }
+
+  const generatorPanel = event.target.closest("#generator-build-panel");
+  const stepPanel = event.target.closest("#step-build-panel");
+  if (!generatorPanel && !stepPanel) {
+    return;
+  }
+
+  event.preventDefault();
+  if (stepPanel && !stepPanel.classList.contains("hidden")) {
+    els.applyStepBuild.click();
+    return;
+  }
+  if (generatorPanel && !generatorPanel.classList.contains("hidden")) {
+    els.applyGenerator.click();
+  }
+}
+
 els.buildGenerator.addEventListener("click", () => {
   state.buildMethod = "generator";
   render();
@@ -1834,6 +1855,7 @@ els.playCycle.addEventListener("click", () => {
 els.stopPlayback.addEventListener("click", () => stopPlaybackUi());
 
 window.addEventListener("keydown", handleComputerKeyDown);
+window.addEventListener("keydown", handleBuildApplyKeyDown);
 window.addEventListener("keyup", handleComputerKeyUp);
 
 els.durationReadout.textContent = Number(els.durationSlider.value).toFixed(2);
