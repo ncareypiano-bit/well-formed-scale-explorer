@@ -495,14 +495,21 @@ function previewCircleRows(scale, rows) {
     return rows;
   }
 
-  const tonicGeneratorIndex = rows[0]?.fromGeneratorIndex ?? 0;
-  return rows.map((row) => ({
-    ...row,
-    relativePitchClass: mod(
-      mod(row.fromGeneratorIndex - tonicGeneratorIndex, scale.cardinality) * previewGeneratorValue,
-      1
-    ),
-  }));
+  try {
+    const previewScale = applyMode(
+      buildScaleFromGenerator({
+        period: scale.period,
+        generatorMode: "log",
+        generatorInput: String(previewGeneratorValue),
+        baseFrequency: scale.baseFrequency,
+        cardinality: scale.cardinality,
+      }),
+      currentModeValue()
+    );
+    return modalCycleRows(previewScale);
+  } catch {
+    return rows;
+  }
 }
 
 function circlePitchClassSeparation(left, right) {
