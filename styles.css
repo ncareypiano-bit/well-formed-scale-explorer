@@ -776,3 +776,38 @@ button:hover {
     min-width: 520px;
   }
 }
+
+/* Keep the reading panels alongside one another using the existing Help design. */
+.documentation-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.documentation-panels > .panel { min-width: 0; }
+.documentation-panels summary:focus-visible {
+  outline: 2px solid var(--accent-dark);
+  outline-offset: 5px;
+  border-radius: 4px;
+}
+.about-content {
+  max-width: 70ch;
+  margin-inline: auto;
+  gap: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.about-content h2 { font-size: 1.5rem; line-height: 1.25; }
+.about-content h3 { margin: 16px 0 0; font-size: 1.15rem; line-height: 1.4; }
+.about-content h4 { margin: 10px 0 0; font-size: 1rem; }
+.about-content .about-equation {
+  padding: 10px 14px;
+  background: rgba(226, 200, 106, 0.13);
+  border-radius: 10px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.1rem;
+}
+.about-content a { color: var(--accent-dark); text-underline-offset: 3px; }
+@media (max-width: 700px) {
+  .documentation-panels { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Well-Formed Scale Explorer</title>
-    <link rel="stylesheet" href="./styles.css?v=16" />
+    <link rel="stylesheet" href="./styles.css?v=17" />
   </head>
   <body>
     <main class="app-shell">
@@ -14,6 +14,7 @@
         </div>
       </header>
 
+      <div class="documentation-panels">
       <details class="panel help-panel">
         <summary>Help</summary>
         <div class="help-content">
@@ -95,7 +96,7 @@
             <h2>Scale Circle</h2>
             <p>The Scale Circle places the notes of the scale around a circle, with the current tonic at the top.</p>
             <p>Click a point to play it. In Scale Circle view, <code>Shift</code>-click plays that note one period higher.</p>
-            <p>Any nonzero scale degree can also be modified by click-dragging, creating a different well-formed scale with the same cardinality and generator span. The scale can be transformed up to a limiting degenerate well-formed scale in either direction. An ordinary click still plays the note.</p>
+            <p>Any nonzero scale degree can also be click-dragged to continuously transform the scale. As the point is dragged, the two step sizes change while the cardinality and generator span remain fixed, producing a continuous family of well-formed scales. The scale can be transformed up to a limiting degenerate well-formed scale in either direction. An ordinary click still plays the note.</p>
           </section>
 
           <section class="help-section">
@@ -134,10 +135,82 @@
 
           <section class="help-section">
             <h2>Special Case: Degenerate Well-Formed Scales</h2>
-            <p>Every equal tempered scale is understood to be a degenerate well-formed scale. Whenever <code>log<sub>p</sub>(g)</code> is rational, such a scale will be the largest cardinality. Such scales do not transport back predictably from Scale Step Build to Generator Build.</p>
+            <p>Every equal tempered scale is understood to be a degenerate well-formed scale. Whenever <code>log<sub>p</sub>(g)</code> is rational, such a scale will be the largest cardinality of its hierarchy. Such scales do not transport back predictably from Scale Step Build to Generator Build.</p>
           </section>
         </div>
       </details>
+
+
+      <details class="panel help-panel about-panel">
+        <summary>About</summary>
+        <article class="help-content about-content">
+          <h2>About Well-Formed Scales</h2>
+          <h3>1. What Is a Well-Formed Scale?</h3>
+          <p>A well-formed scale is a generated scale in which the order imposed by a generating interval is coordinated in a particularly regular way with the scale order of the notes.</p>
+          <p>Choose a period p and a generator g. In logarithmic coordinates, write</p>
+          <p class="about-equation">τ = log<sub>p</sub>(g) = log(g)/log(p).</p>
+          <p>For a scale of cardinality N, take the N points</p>
+          <p class="about-equation">0, τ, 2τ, …, (N−1)τ mod 1,</p>
+          <p>and arrange them in scale order around the period. If τ is irrational, the Three-Gap Theorem (also called the Three-Distance Theorem) states that the gaps between consecutive points have at most three distinct sizes; when there are three, the largest is the sum of the other two (Halton 1965; Slater 1967; see also Sós 1958). At particular cardinalities only two sizes occur; these are the nondegenerate well-formed scales. These cardinalities are the denominators of the convergents and intermediate convergents in the continued-fraction expansion of τ.</p>
+          <p>If τ = a/b in lowest terms, repeated generation produces b distinct, equally spaced pitch classes. This equal-interval scale is the terminal member of the hierarchy—a degenerate well-formed scale.</p>
+          <p>For example, with the perfect fifth g = 3/2 as generator and the octave p = 2/1 as period,</p>
+          <p class="about-equation">τ = log<sub>2</sub>(3/2).</p>
+          <p>The convergents and intermediate convergents of the continued fraction of τ determine the well-formed hierarchy, whose cardinalities include</p>
+          <p class="about-equation">2, 3, 5, 7, 12, 17, 29, 41, 53, …</p>
+          <p>The familiar pentatonic, diatonic, and chromatic scales therefore belong to the same generated hierarchy.</p>
+          <p>A particularly useful characterization of well-formedness is that the generator always spans the same number of scale steps. In the diatonic scale, for example, every generating perfect fifth spans four scale steps. More generally, nondegenerate well-formed scales possess <strong>Myhill’s Property (MP)</strong>: every nonzero generic interval—that is, every span of 1 through N−1 scale steps—occurs in exactly two specific sizes. This two-size regularity holds throughout the interval structure, not merely for adjacent scale steps (Clough and Myerson 1985; Carey and Clampitt 1989). In a degenerate well-formed scale, each generic interval instead has just one specific size. Thus merely having two sizes of scale step is not sufficient for a scale to be well-formed.</p>
+          <h3>2. Well-Formed Scales and Moments of Symmetry</h3>
+          <p>The theory of well-formed scales is closely related to Erv Wilson&#x27;s theory of Moments of Symmetry (MOS). Wilson developed the MOS idea in the context of tuning theory, using repeated applications of a generator modulo a period to identify particularly symmetrical stages in the growth of a generated scale. The term Moment of Symmetry reflects the appearance, at particular cardinalities, of a highly regular two-size interval structure.</p>
+          <p>Norman Carey and David Clampitt introduced the term well-formed scale in their 1989 article “Aspects of Well-Formed Scales.” Their formulation emphasizes the relationship between generator order and scale order and develops the recursive organization of well-formed scales into hierarchies.</p>
+          <p>The MOS and well-formed approaches arose in somewhat different traditions—Wilson&#x27;s primarily in tuning theory and well-formedness in mathematical music theory—but they describe closely related manifestations of the same underlying generated-scale structure. Under the usual conditions represented in this Explorer, the two theories identify the same characteristic scales, although extensions and generalizations of the concepts need not coincide in every context.</p>
+          <p>Continued fractions provide a natural mathematical description of this structure. Successive convergents and intermediate convergents of the generator determine the cardinalities at which the two-size organization occurs and thereby organize the successive members of a well-formed hierarchy.</p>
+          <h3>3. Step Patterns, Cycle Patterns, Foldings, and Words</h3>
+          <p>The Explorer displays several related combinatorial descriptions of a well-formed scale that show different aspects of the relationship between scale order and cyclic order.</p>
+          <h4>Step Patterns</h4>
+          <p>A nondegenerate well-formed scale has two scale-step sizes, labeled A and B in the Explorer. Reading the steps successively around the scale gives a binary word: the Step pattern in A/B.</p>
+          <p>Changing the mode changes the starting point in this circular pattern without changing the pattern itself. The step pattern for every mode of a well-formed scale is therefore a conjugate, or cyclic rotation, of a Christoffel word. The familiar musical operation of changing mode consequently has a precise interpretation in combinatorics on words.</p>
+          <p>For the seven-note diatonic scale, for example, the five large and two small steps form a seven-letter circular Christoffel pattern. The seven modes give its seven cyclic rotations.</p>
+          <h4>Cycle Patterns</h4>
+          <p>Scale-step order is only one way of traversing the notes. The Explorer permits the user to choose other cycles through the scale degrees and displays the resulting Cycle pattern in a/b. The letters a and b represent the two interval sizes encountered along the selected cycle. For a nondegenerate well-formed scale, this two-size structure is an expression of Myhill’s Property (MP).</p>
+          <p>Thus the Explorer allows the two-size structure of a well-formed scale to be examined under different cyclic traversals rather than only in ordinary scale order.</p>
+          <p>Generator order is especially important. If the scale has cardinality N and its generator spans k scale steps, generator order is the orbit</p>
+          <p class="about-equation">0, k, 2k, 3k, … mod N.</p>
+          <p>In other words, the generator acts on the scale degrees in ℤ<sub>N</sub> by</p>
+          <p class="about-equation">i ↦ i + k mod N.</p>
+          <p>This modular formulation expresses directly the relationship between generator order and scale order that lies at the heart of well-formedness.</p>
+          <h4>Cycle Foldings</h4>
+          <p>The Explorer also displays the Cycle folding in x/y. Looked at in one way, x and y distinguish the two directions of the cycle&#x27;s motion through scale order: up and down.</p>
+          <p>For the generator cycle, the modular displacement k mod N can be represented by the two directed motions</p>
+          <p class="about-equation">+k</p>
+          <p>and</p>
+          <p class="about-equation">−(N−k).</p>
+          <p>Thus x and y may be understood as recording the upward and downward motions of the folded generator cycle. Over a complete cycle, the two occur N−k and k times, respectively, up to orientation and the assignment of the letters x and y.</p>
+          <p>For the seven-note diatonic scale, N = 7, and the perfect fifth has generator span k = 4. Generator order is therefore addition by 4 mod 7. Its two directed representatives are</p>
+          <p class="about-equation">+4 and −3.</p>
+          <p>The complete folding consequently contains three upward motions of four scale steps and four downward motions of three scale steps:</p>
+          <p class="about-equation">3(4) + 4(−3) = 0.</p>
+          <p>Looked at another way, the A/B step pattern and the x/y folding are dual structures. Both arise from the same continued-fraction data underlying the well-formed scale. The numbers and arrangement of the two scale steps and the corresponding folding directions are two aspects of that construction. In the language of combinatorics on words, this relationship is a form of Christoffel duality, described in the musical literature as height-width duality.</p>
+          <p>The Explorer makes these relationships visible simultaneously: the Step pattern in A/B describes the scale in scale order; the Cycle pattern in a/b describes the intervals encountered under a chosen cyclic traversal; and the Cycle folding in x/y shows how that traversal folds through scale order.</p>
+          <h4>Christoffel and Sturmian Words</h4>
+          <p>The connection with combinatorics on words extends beyond the identification of a well-formed step pattern with a conjugate of a Christoffel word. Christoffel words describe finite rational structures; Sturmian words describe aperiodic binary codings of irrational rotations. Continued fractions connect the two through successive rational approximations.</p>
+          <p>This makes the connection particularly appropriate for well-formed scales: the same rotation and continued-fraction structure that determines the hierarchy of scales also determines the associated binary words.</p>
+          <p>Later work on partitioned factors develops this connection further. Circular factors of Christoffel words, and factors of their infinite Sturmian counterparts, have tightly constrained varieties and multiplicities. The regularities encountered in generated musical scales can therefore be understood as instances of a broader combinatorial theory of balanced words.</p>
+          <h3>4. References and Further Reading</h3>
+          <p>Clough, John, and Gerald Myerson. “Variety and Multiplicity in Diatonic Systems.” <em>Journal of Music Theory</em> 29, no. 2 (1985): 249–270. <a href="https://doi.org/10.2307/843615" target="_blank" rel="noopener noreferrer">DOI</a>.</p>
+          <p>Halton, J. H. “The Distribution of the Sequence {nξ} (n = 0, 1, 2, …).” <em>Proceedings of the Cambridge Philosophical Society</em> 61, no. 3 (1965): 665–670. <a href="https://doi.org/10.1017/S0305004100039013" target="_blank" rel="noopener noreferrer">DOI</a>.</p>
+          <p>Slater, N. B. “Gaps and Steps for the Sequence nθ mod 1.” <em>Proceedings of the Cambridge Philosophical Society</em> 63, no. 4 (1967): 1115–1123. <a href="https://doi.org/10.1017/S0305004100042195" target="_blank" rel="noopener noreferrer">DOI</a>.</p>
+          <p>Sós, V. T. “On the Distribution mod 1 of the Sequence nα.” <em>Annales Universitatis Scientiarum Budapestinensis de Rolando Eötvös Nominatae, Sectio Mathematica</em> 1 (1958): 127–134.</p>
+          <p>Carey, Norman, and David Clampitt. “Aspects of Well-Formed Scales.” Music Theory Spectrum 11, no. 2 (1989): 187–206.</p>
+          <p>Carey, Norman, and David Clampitt. “Self-Similar Pitch Structures, Their Duals, and Rhythmic Analogues.” Perspectives of New Music 34, no. 2 (1996): 62–87.</p>
+          <p>Carey, Norman. “Coherence and Sameness in Well-Formed and Pairwise Well-Formed Scales.” Journal of Mathematics and Music 1, no. 2 (2007): 79–98.</p>
+          <p>Clampitt, David, and Thomas Noll. “Modes, the Height-Width Duality, and Handschin&#x27;s Tone Character.” Music Theory Online 17, no. 1 (2011).</p>
+          <p>Carey, Norman, and David Clampitt. “Partitioned Factors in Christoffel and Sturmian Words.” Theoretical Computer Science 743 (2018): 53–63.</p>
+          <p>Carey, Norman, and David Clampitt. “Variety and Multiplicity for Partitioned Factors in Christoffel and Sturmian Words.” Journal of Mathematics and Music 12, no. 3 (2018): 154–170.</p>
+          <p>Wilson, Erv. “Moments of Symmetry.” 1975. Archival materials concerning generated scales and tuning systems.</p>
+          <p>Xenharmonic Wiki. “MOS Scale.”<br><a href="https://en.xen.wiki/w/MOS_scale" target="_blank" rel="noopener noreferrer">MOS Scale — Xenharmonic Wiki</a></p>
+        </article>
+      </details>
+      </div>
 
       <section class="panel build-panel">
         <div class="panel-header">
