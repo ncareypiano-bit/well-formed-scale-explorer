@@ -26,7 +26,15 @@ Any static web server will work. For example:
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000/web-app/` if serving from the repo root.
+Then open `http://localhost:8000/` when serving from this repository.
+
+Run the regression checks with Node.js:
+
+```bash
+node --test scale.test.mjs session.test.mjs app.test.mjs audio.test.mjs
+```
+
+Valid builder edits rebuild automatically, preserving the last valid scale during incomplete input. Build Scale or Enter rebuilds immediately. Typing in one field forms one Undo step until the field loses focus or is confirmed. Compact Undo/Redo controls restore earlier scales, and Escape stops playback. Scale data v2 saves the applied scale, stable step labels, mode, cycle/coset, metronome tempo in BPM, and display/audio settings; v1 files remain readable, and older v2 Duration settings convert to BPM while retaining their note spacing.
 
 ## Vercel
 
@@ -35,6 +43,10 @@ This can be deployed as a static site.
 When importing the repo into Vercel:
 
 - Framework Preset: `Other`
-- Root Directory: `web-app`
+- Root Directory: repository root
 - Build Command: leave empty
 - Output Directory: leave empty
+
+## Instrument sounds
+
+The Explorer includes Versilian piano, marimba, pipe organ and clarinet recordings, plus a synthesized sine reference. Samples are loaded locally on demand and played at continuous rates for the calculated frequencies. Hold screen or computer keys to sustain chords; notes release independently, and quick mouse clicks ring for a beat so they can overlap. Piano and marimba decay naturally. Cycle notes connect at each beat, with short release tails. See [sample sources and preparation](assets/samples/README.md) for CC0 credits, rebuild instructions, and acoustic tuning limitations.

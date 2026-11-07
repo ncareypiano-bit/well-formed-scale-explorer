@@ -808,3 +808,35 @@ button:hover {
   font-size: 1.1rem;
 }
 .about-content a { color: var(--accent-dark); text-underline-offset: 3px; }
+
+/* Keep history unobtrusive; surface explanations stay close to their controls. */
+.build-panel > .panel-header { display: flex; width: 100%; flex-wrap: wrap; align-items: center; gap: 12px; }
+.history-controls { display: flex; gap: 5px; margin-left: auto; }
+.history-controls button { padding: 5px 10px; font-size: 1.2rem; line-height: 1.2; }
+button:disabled { opacity: .4; cursor: default; }
+button:focus-visible, .keyboard:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 3px; }
+[aria-invalid="true"] { border-color: #a02c22; box-shadow: 0 0 0 1px #a02c22; }
+.status-line { color: #8b2820; }
+.pending-line { color: var(--muted); font-size: .85rem; }
+.pending-line:empty, .status-line:empty { display: none; }
+.notation-key { color: var(--muted); font-size: .8rem; text-align: center; }
+.sound-options { position: relative; align-self: center; font-size: .9rem; color: var(--muted); }
+.sound-options summary { cursor: pointer; }
+.sound-options label { position: absolute; z-index: 3; right: 0; top: 24px; padding: 12px; border: 1px solid var(--panel-border); border-radius: 12px; background: #fffbf3; box-shadow: var(--shadow); }
+.circle-hit { touch-action: none; }
+.circle-hit:focus-visible { stroke: var(--accent-dark); stroke-width: 3; outline: none; }
+.circle-stage { min-width: 0; width: 100%; }
+.circle-surface { min-height: 0; }
+@media (max-width: 760px) {
+  .history-controls { margin-left: 0; }
+  .circle-stage { min-width: 0; }
+  .circle-surface { padding: 8px; }
+  .scale-circle-svg { min-width: 0; }
+  .circle-label { font-size: 22px; }
+  .circle-label-alias { font-size: 15px; }
+  .keyboard-cycle-overlay { height: 168px; }
+}
+
+.inline-control #tempo-input { width: 88px; min-width: 0; }
+
+.key { touch-action: none; }

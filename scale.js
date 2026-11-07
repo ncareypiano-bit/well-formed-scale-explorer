@@ -41,8 +41,18 @@ export function evaluateExpression(raw) {
     .replace(/__WFSI_SIN__/g, "Math.sin")
     .replace(/__WFSI_COS__/g, "Math.cos");
 
-  // eslint-disable-next-line no-new-func
-  const value = Function(`"use strict"; return (${normalized});`)();
+  const unknown = normalized
+    .replace(/Math\.(?:PI|E|sqrt|log|exp|sin|cos)\b/g, "")
+    .replace(/(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/g, "")
+    .replace(/[+\-*/().,\s]/g, "");
+  if (unknown) throw new Error("Enter a number, a ratio such as 3/2, or a supported mathematical expression.");
+  let value;
+  try {
+    // Only numeric expressions and the supported Math functions pass the check above.
+    value = Function(`"use strict"; return (${normalized});`)();
+  } catch {
+    throw new Error("Check the expression: use a number, a ratio such as 3/2, or a supported mathematical expression.");
+  }
   if (!Number.isFinite(value)) {
     throw new Error(`Could not evaluate "${raw}".`);
   }
@@ -328,7 +338,19 @@ function stepWordFromSteps(steps) {
     .join("");
 }
 
-function stepSummary(steps) {
+function stepSummary(steps, word = null) {
+  if (word && word.includes("A") && word.includes("B")) {
+    const typeACount = [...word].filter((letter) => letter === "A").length;
+    const typeBCount = word.length - typeACount;
+    const typeASize = steps[word.indexOf("A")];
+    const typeBSize = steps[word.indexOf("B")];
+    return {
+      degenerate: Math.abs(typeASize - typeBSize) < EPSILON,
+      typeASize, typeBSize, typeACount, typeBCount,
+      ratio: typeASize / typeBSize,
+      word,
+    };
+  }
   const distinct = [...steps].sort((a, b) => b - a).filter((value, index, array) => {
     if (index === 0) return true;
     return Math.abs(value - array[index - 1]) > EPSILON;
@@ -347,7 +369,7 @@ function stepSummary(steps) {
   }
 
   const [typeA, typeB] = distinct;
-  const word = stepWordFromSteps(steps);
+  word = stepWordFromSteps(steps);
   const typeACount = [...word].filter((char) => char === "A").length;
   const typeBCount = word.length - typeACount;
 
@@ -503,12 +525,14 @@ export function buildScaleFromStepStructure({
     ? Array.from({ length: cardinality }, (_, index) => index)
     : Array.from({ length: cardinality }, (_, index) => (typeBCount * index) % cardinality);
 
+  const stepWord = degenerate
+    ? "A".repeat(cardinality)
+    : fromGeneratorIndices.map((current, index, array) => (
+        array[(index + 1) % array.length] > current ? "A" : "B"
+      )).join("");
   const stepPattern = degenerate
     ? Array(cardinality).fill(1 / cardinality)
-    : fromGeneratorIndices.map((current, index, array) => {
-        const next = array[(index + 1) % array.length];
-        return next > current ? stepA : stepB;
-      });
+    : [...stepWord].map((letter) => letter === "A" ? stepA : stepB);
 
   const pitchClasses = cumulativePitchClasses(stepPattern);
   const rows = rowsFromPitchClasses({
@@ -533,9 +557,23 @@ export function buildScaleFromStepStructure({
     cardinality,
     availableCardinalities,
     stepPattern,
-    stepWord: stepWordFromSteps(stepPattern),
+    stepWord,
     rows,
-    summary: stepSummary(stepPattern),
+    summary: stepSummary(stepPattern, stepWord),
+  };
+}
+
+// Keep construction labels while the generator deforms within the same ordering.
+export function preserveStepLabels(scale, reference) {
+  if (!reference || scale.cardinality !== reference.cardinality ||
+      !reference.stepWord.includes("B") ||
+      !scale.rows.every((row, index) => (
+        row.fromGeneratorIndex === reference.rows[index].fromGeneratorIndex
+      ))) return scale;
+  return {
+    ...scale,
+    stepWord: reference.stepWord,
+    summary: stepSummary(scale.stepPattern, reference.stepWord),
   };
 }
 
@@ -566,17 +604,12 @@ export function applyMode(scale, mode) {
     scaleDegree: index,
   }));
 
-  const displaySteps = windowRows.slice(0, -1).map((row, index) => {
-    const next = windowRows[index + 1];
-    return next.pitchClass - row.pitchClass;
-  });
-
   return {
     ...scale,
     mode: start,
     displayRows: windowRows,
     playbackRows: windowRows,
-    displayStepWord: stepWordFromSteps(displaySteps),
+    displayStepWord: scale.stepWord.slice(start) + scale.stepWord.slice(0, start),
   };
 }
 
@@ -700,16 +733,19 @@ export function keyboardItems(scale) {
 
   const summary = scale.summary;
   const blackKeys = [];
+  const largeLetter = summary.typeASize >= summary.typeBSize ? "A" : "B";
   if (!summary.degenerate && summary.typeBSize !== null) {
     const firstStep = stepWord[0] ?? "A";
-    const colorStep = summary.typeASize - summary.typeBSize;
-    const lowerOffset = firstStep === "A" ? colorStep : summary.typeBSize;
+    const largeSize = Math.max(summary.typeASize, summary.typeBSize);
+    const smallSize = Math.min(summary.typeASize, summary.typeBSize);
+    const colorStep = largeSize - smallSize;
+    const lowerOffset = firstStep === largeLetter ? colorStep : smallSize;
     const chars = stepWord.split("");
 
     chars.forEach((char, index) => {
       const lower = rows[index];
       const upper = rows[index + 1];
-      if (char !== "A" || !lower || !upper) return;
+      if (char !== largeLetter || !lower || !upper) return;
 
       const pitchClass = lower.pitchClass + lowerOffset;
       blackKeys.push({
@@ -733,7 +769,7 @@ export function keyboardItems(scale) {
     patternGaps: stepWord.split("").map((letter, index) => ({
       letter,
       gapIndex: index,
-      hasColorKey: letter === "A",
+      hasColorKey: !summary.degenerate && letter === largeLetter,
     })),
   };
 }
@@ -831,7 +867,7 @@ export function analysisPanelData(scale) {
       {
         label: "A/B",
         value: summary.ratio === null ? "-" : displayNumber(summary.ratio, 6),
-        note: "Log freq ratio",
+        note: "Ratio of step sizes in cents",
       },
     ],
     values: [
@@ -845,4 +881,16 @@ export function analysisPanelData(scale) {
       },
     ],
   };
+}
+
+export function cycleIntervalLetter(scale, from, to) {
+  const span = ((to - from) % scale.cardinality + scale.cardinality) % scale.cardinality;
+  const word = scale.displayStepWord || scale.stepWord;
+  let countA = 0;
+  for (let offset = 0; offset < span; offset += 1) {
+    if (word[(from + offset) % scale.cardinality] === "A") countA += 1;
+  }
+  if (!word.includes("B")) return "a";
+  const minimumCount = Math.floor(span * scale.summary.typeACount / scale.cardinality);
+  return countA > minimumCount ? "a" : "b";
 }

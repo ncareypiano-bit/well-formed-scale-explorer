@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Well-Formed Scale Explorer</title>
-    <link rel="stylesheet" href="./styles.css?v=18" />
+    <link rel="stylesheet" href="./styles.css?v=19" />
   </head>
   <body>
     <main class="app-shell">
@@ -21,7 +21,7 @@
           <section class="help-section">
             <h2>What This App Does</h2>
             <p>Well-Formed Scale Explorer builds and plays well-formed scales from either generator data or scale-step data.</p>
-            <p>The scale updates in the background as values are applied, making it easy to modify, compare, and reshape scales.</p>
+            <p>The scale updates automatically as valid values are entered, making it easy to modify, compare, and reshape scales.</p>
           </section>
 
           <section class="help-section">
@@ -36,9 +36,9 @@
               <li>period</li>
               <li>cardinality</li>
               <li>number of <code>A</code> steps</li>
-              <li>either the relative proportion <code>A:B</code> or the size of <code>A</code></li>
+              <li>either the relative proportion <code>A:B</code> in logarithmic units (equivalently, cents), or the size of <code>A</code> as a fraction of the period</li>
             </ul>
-            <p>Applied changes update the scale in the background, so the two methods can be used flexibly as complementary ways of shaping the same object.</p>
+            <p>Valid builder edits update the scale automatically. Incomplete or invalid entries leave the last valid scale in place. Build Scale or Enter rebuilds immediately. Undo and Redo beside the build controls return to previous scales; typing in one field counts as one edit until you leave the field or confirm it, and each completed circle drag counts as one edit. Standard Undo/Redo shortcuts work outside text fields.</p>
           </section>
 
           <section class="help-section">
@@ -57,7 +57,7 @@
             <ul>
               <li><code>N</code>: total number of scale tones in the period</li>
               <li><code>#A</code>, <code>#B</code>: numbers of occurrences of the step types</li>
-              <li><code>A/B</code>: logarithmic ratio of the two step sizes</li>
+              <li><code>A/B</code>: ratio of the step sizes measured in cents (equivalently, in logarithmic units)</li>
             </ul>
 
             <p><strong>Values</strong></p>
@@ -69,12 +69,12 @@
             <p>The Explorer can be shown either as a <strong>Keyboard</strong> or as a <strong>Scale Circle</strong>.</p>
             <p>The header displays:</p>
             <ul>
-              <li><code>Step pattern</code> in <code>A/B</code></li>
-              <li><code>Cycle pattern</code> in <code>a/b</code></li>
-              <li><code>Cycle folding</code> in <code>x/y</code></li>
+              <li><code>Step pattern</code> using <code>A</code> and <code>B</code></li>
+              <li><code>Cycle pattern</code> using <code>a</code> and <code>b</code></li>
+              <li><code>Cycle folding</code> using <code>x</code> and <code>y</code></li>
               <li><code>Generator span</code>, the cycle corresponding to generator order</li>
             </ul>
-            <p>The interval table below the cycle controls shows the two interval classes of the selected cycle as frequency ratios and cents. In the circle view, the same colors are used on the cycle segments.</p>
+            <p>A and B retain their construction identities; either can be larger. The cycle interval a contains one more A step and one fewer B step than b, so a−b = A−B in logarithmic units. The folding letters x and y mean upward and downward motion through scale order, including closure. Parenthesized counts after a cycle word follow its letter order: (a,b) or (x,y). The interval table below the cycle controls shows the Large and Small intervals as frequency ratios and cents values. A selected coset may contain only one type. In the circle view, the same colors are used on the cycle segments.</p>
           </section>
 
           <section class="help-section">
@@ -84,7 +84,7 @@
               <li>white keys for scale tones</li>
               <li>black keys for auxiliary tones between adjacent scale tones</li>
             </ul>
-            <p>Click a key to play it.</p>
+            <p>Click a key to play it; quick mouse clicks ring for one beat and can overlap. Hold several computer keys, or touch several screen keys, to play a chord. Held notes release independently.</p>
             <p>The computer keyboard is active in Keyboard view:</p>
             <ul>
               <li>lower-case keys play white keys</li>
@@ -129,8 +129,9 @@
               <li><code>N - Generator span</code>: reverse generator order</li>
             </ul>
             <p>If the chosen cycle step is not relatively prime to <code>N</code>, the cycle breaks into cosets. In that case a <code>Coset</code> selector appears.</p>
-            <p><code>Duration</code> controls playback note length.</p>
-            <p><code>Timbre</code> selects the instrument sound.</p>
+            <p><code>Tempo</code> is a metronome marking in beats per minute (BPM), with one cycle note per quarter-note beat. For example, ♩ = 120 plays two notes per second; ♩ = 60 plays one note per second. Higher BPM values play faster. Change tempo while stopped; changing it during playback stops the cycle, ready to restart at the new tempo. <code>Volume</code> adjusts playback level. Press <code>Escape</code> to stop sound immediately.</p>
+            <p><code>Timbre</code> selects piano, marimba, pipe organ, clarinet, or a pure sine wave. Recordings load on first use. Hold a keyboard key (on screen or computer) to sustain; piano and marimba decay naturally. Cycle notes begin one per beat, with a short release at the next note.</p>
+            <p>Instrument recordings: <a href="https://versilian-studios.com/vcsl/" target="_blank" rel="noopener">Versilian Community Sample Library</a> (piano, marimba, organ) and <a href="https://versilian-studios.com/vsco-community/" target="_blank" rel="noopener">VSCO 2 Community Edition</a> (clarinet), released under CC0.</p>
           </section>
 
           <section class="help-section">
@@ -146,19 +147,19 @@
         <article class="help-content about-content">
           <h2>About Well-Formed Scales</h2>
           <h3>1. What Is a Well-Formed Scale?</h3>
-          <p>A well-formed scale is a generated scale in which the order imposed by a generating interval is coordinated in a particularly regular way with the scale order of the notes.</p>
-          <p>Choose a period p and a generator g. In logarithmic coordinates, write</p>
+          <p>A well-formed scale is a musical scale constructed from two musical intervals: a <strong>generator</strong> and an <strong>interval or periodicity, called the period</strong>. The generator is repeatedly applied to produce a succession of pitches, while the period establishes the interval within which those pitches are organized, treating pitches separated by one or more periods as equivalent. Well-formedness occurs at particular cardinalities, where generator order and scale order have a regular relationship: the generating interval consistently spans the same number of scale steps. The paradigmatic example is <strong>Pythagorean tuning</strong>, in which the generator is the perfect fifth (3:2) and the perfect octave (2:1) is the period.</p>
+          <p>Choose a period p &gt; 1 and a generator g &gt; 0, expressed as frequency ratios. In logarithmic coordinates, write</p>
           <p class="about-equation">τ = log<sub>p</sub>(g) = log(g)/log(p).</p>
-          <p>For a scale of cardinality N, take the N points</p>
-          <p class="about-equation">0, τ, 2τ, …, (N−1)τ mod 1,</p>
-          <p>and arrange them in scale order around the period. If τ is irrational, the Three-Gap Theorem (also called the Three-Distance Theorem) states that the gaps between consecutive points have at most three distinct sizes; when there are three, the largest is the sum of the other two (Halton 1965; Slater 1967; see also Sós 1958). At particular cardinalities only two sizes occur; these are the nondegenerate well-formed scales. These cardinalities are the denominators of the convergents and intermediate convergents in the continued-fraction expansion of τ.</p>
-          <p>If τ = a/b in lowest terms, repeated generation produces b distinct, equally spaced pitch classes. This equal-interval scale is the terminal member of the hierarchy—a degenerate well-formed scale.</p>
+          <p>Successive applications of the generator give the points</p>
+          <p class="about-equation">0, τ, 2τ, … mod 1.</p>
+          <p>For a chosen cardinality N, take the first N points, nτ mod 1 for n = 0, 1, …, N−1, and arrange them in scale order around the period. If τ is irrational, the Three-Gap Theorem (also called the Three-Distance Theorem) states that the gaps between consecutive points have at most three distinct sizes; when there are three, the largest is the sum of the other two. At particular cardinalities only two sizes occur; these are the nondegenerate well-formed scales. Their cardinalities are determined by the continued-fraction expansion of τ, through its convergents and intermediate convergents.</p>
+          <p>If τ = u/v in lowest terms, generation produces v distinct pitch classes. The hierarchy terminates in this equal-interval scale, having only one step size—a degenerate well-formed scale.</p>
           <p>For example, with the perfect fifth g = 3/2 as generator and the octave p = 2/1 as period,</p>
           <p class="about-equation">τ = log<sub>2</sub>(3/2).</p>
           <p>The convergents and intermediate convergents of the continued fraction of τ determine the well-formed hierarchy, whose cardinalities include</p>
           <p class="about-equation">2, 3, 5, 7, 12, 17, 29, 41, 53, …</p>
           <p>The familiar pentatonic, diatonic, and chromatic scales therefore belong to the same generated hierarchy.</p>
-          <p>A particularly useful characterization of well-formedness is that the generator always spans the same number of scale steps. In the diatonic scale, for example, every generating perfect fifth spans four scale steps. More generally, nondegenerate well-formed scales possess <strong>Myhill’s Property (MP)</strong>: every nonzero generic interval—that is, every span of 1 through N−1 scale steps—occurs in exactly two specific sizes. This two-size regularity holds throughout the interval structure, not merely for adjacent scale steps (Clough and Myerson 1985; Carey and Clampitt 1989). In a degenerate well-formed scale, each generic interval instead has just one specific size. Thus merely having two sizes of scale step is not sufficient for a scale to be well-formed.</p>
+          <p>A particularly useful characterization of well-formedness is that the generator always spans the same number of scale steps. In the diatonic scale, for example, every generating perfect fifth spans four scale steps. More generally, well-formedness imposes regularity not merely on the individual scale steps but throughout the interval structure of the scale. In a nondegenerate well-formed scale, intervals spanning any given number of scale steps from 1 through N−1 occur in exactly two sizes. In a degenerate well-formed scale, each such span has only one size. For an arbitrary scale, merely having two sizes of scale step is not sufficient for well-formedness; for the consecutive-generator construction described above, however, exactly two step sizes identify the nondegenerate well-formed stages.</p>
           <h3>2. Well-Formed Scales and Moments of Symmetry</h3>
           <p>The theory of well-formed scales is closely related to Erv Wilson&#x27;s theory of Moments of Symmetry (MOS). Wilson developed the MOS idea in the context of tuning theory, using repeated applications of a generator modulo a period to identify particularly symmetrical stages in the growth of a generated scale. The term Moment of Symmetry reflects the appearance, at particular cardinalities, of a highly regular two-size interval structure.</p>
           <p>Norman Carey and David Clampitt introduced the term well-formed scale in their 1989 article “Aspects of Well-Formed Scales.” Their formulation emphasizes the relationship between generator order and scale order and develops the recursive organization of well-formed scales into hierarchies.</p>
@@ -167,19 +168,18 @@
           <h3>3. Step Patterns, Cycle Patterns, Foldings, and Words</h3>
           <p>The Explorer displays several related combinatorial descriptions of a well-formed scale that show different aspects of the relationship between scale order and cyclic order.</p>
           <h4>Step Patterns</h4>
-          <p>A nondegenerate well-formed scale has two scale-step sizes, labeled A and B in the Explorer. Reading the steps successively around the scale gives a binary word: the Step pattern in A/B.</p>
-          <p>Changing the mode changes the starting point in this circular pattern without changing the pattern itself. The step pattern for every mode of a well-formed scale is therefore a conjugate, or cyclic rotation, of a Christoffel word. The familiar musical operation of changing mode consequently has a precise interpretation in combinatorics on words.</p>
-          <p>For the seven-note diatonic scale, for example, the five large and two small steps form a seven-letter circular Christoffel pattern. The seven modes give its seven cyclic rotations.</p>
+          <p>A nondegenerate well-formed scale has two scale-step types, labeled A and B in the Explorer. These labels retain their identities as their sizes change: A may be larger than, equal to, or smaller than B. A new Generator Build initially assigns A to the larger step; Scale Step Build uses the supplied A and B identities. Reading the steps successively around the scale from the selected tonic gives a binary word: the Step pattern using A and B. At A = B, the scale has one step size, but the construction labels are retained when available.</p>
+          <p>Changing the mode changes the starting point of the circular step pattern, producing a different ordering of the same collection of steps.</p>
           <h4>Cycle Patterns</h4>
-          <p>Scale-step order is only one way of traversing the notes. The Explorer permits the user to choose other cycles through the scale degrees and displays the resulting Cycle pattern in a/b. The letters a and b represent the two interval sizes encountered along the selected cycle. For a nondegenerate well-formed scale, this two-size structure is an expression of Myhill’s Property (MP).</p>
-          <p>Thus the Explorer allows the two-size structure of a well-formed scale to be examined under different cyclic traversals rather than only in ordinary scale order.</p>
-          <p>Generator order is especially important. If the scale has cardinality N and its generator spans k scale steps, generator order is the orbit</p>
+          <p>Scale-step order is only one way of traversing the notes. The Explorer permits the user to choose other cycles through the scale degrees and displays the resulting Cycle pattern using a and b. The letters a and b identify the two compositions of intervals encountered along the selected cycle: for the same generic span, a contains one more A step and one fewer B step than b. Thus a−b = A−B in logarithmic units. This common difference across generic spans follows from the balanced structure of well-formed scales, which also gives Myhill’s Property. The letters retain these identities as the sizes cross or become equal. At most two sizes occur; a selected cycle can have only one size. A chosen span visits all N scale degrees in one cycle when it is relatively prime to N. Otherwise, it divides the scale into several shorter cycles, and the Explorer permits selection of a coset.</p>
+          <p>Thus the Explorer allows the interval structure of a well-formed scale to be examined under different cyclic traversals rather than only in ordinary scale order.</p>
+          <p>Generator order is especially important. If the scale has cardinality N and its generator spans k scale steps, generator order is the orbit (with k relatively prime to N)</p>
           <p class="about-equation">0, k, 2k, 3k, … mod N.</p>
-          <p>In other words, the generator acts on the scale degrees in ℤ<sub>N</sub> by</p>
+          <p>In other words, the generator acts on the scale degrees in Z<sub>N</sub> by</p>
           <p class="about-equation">i ↦ i + k mod N.</p>
           <p>This modular formulation expresses directly the relationship between generator order and scale order that lies at the heart of well-formedness.</p>
           <h4>Cycle Foldings</h4>
-          <p>The Explorer also displays the Cycle folding in x/y. Looked at in one way, x and y distinguish the two directions of the cycle&#x27;s motion through scale order: up and down.</p>
+          <p>The Explorer also displays the Cycle folding using x and y. The letter x records an upward motion and y a downward motion through scale order, including the closing motion. These direction labels are independent of the interval-composition labels a and b.</p>
           <p>For the generator cycle, the modular displacement k mod N can be represented by the two directed motions</p>
           <p class="about-equation">+k</p>
           <p>and</p>
@@ -187,26 +187,23 @@
           <p>Thus x and y may be understood as recording the upward and downward motions of the folded generator cycle. Over a complete cycle, the two occur N−k and k times, respectively, up to orientation and the assignment of the letters x and y.</p>
           <p>For the seven-note diatonic scale, N = 7, and the perfect fifth has generator span k = 4. Generator order is therefore addition by 4 mod 7. Its two directed representatives are</p>
           <p class="about-equation">+4 and −3.</p>
-          <p>The complete folding consequently contains three upward motions of four scale steps and four downward motions of three scale steps:</p>
+          <p>The complete folding, closing back onto the initial scale degree, consequently contains three upward motions of four scale steps and four downward motions of three scale steps:</p>
           <p class="about-equation">3(4) + 4(−3) = 0.</p>
-          <p>Looked at another way, the A/B step pattern and the x/y folding are dual structures. Both arise from the same continued-fraction data underlying the well-formed scale. The numbers and arrangement of the two scale steps and the corresponding folding directions are two aspects of that construction. In the language of combinatorics on words, this relationship is a form of Christoffel duality, described in the musical literature as height-width duality.</p>
-          <p>The Explorer makes these relationships visible simultaneously: the Step pattern in A/B describes the scale in scale order; the Cycle pattern in a/b describes the intervals encountered under a chosen cyclic traversal; and the Cycle folding in x/y shows how that traversal folds through scale order.</p>
-          <h4>Christoffel and Sturmian Words</h4>
-          <p>The connection with combinatorics on words extends beyond the identification of a well-formed step pattern with a conjugate of a Christoffel word. Christoffel words describe finite rational structures; Sturmian words describe aperiodic binary codings of irrational rotations. Continued fractions connect the two through successive rational approximations.</p>
-          <p>This makes the connection particularly appropriate for well-formed scales: the same rotation and continued-fraction structure that determines the hierarchy of scales also determines the associated binary words.</p>
-          <p>Later work on partitioned factors develops this connection further. Circular factors of Christoffel words, and factors of their infinite Sturmian counterparts, have tightly constrained varieties and multiplicities. The regularities encountered in generated musical scales can therefore be understood as instances of a broader combinatorial theory of balanced words.</p>
+          <p>This closed-cycle convention differs from foldings that end at the next generated boundary pitch, as also discussed in the height-width literature.</p>
+          <p>The Explorer makes these relationships visible simultaneously: the Step pattern using A and B describes the scale in scale order; the Cycle pattern using a and b describes the intervals encountered under a chosen cyclic traversal; and the Cycle folding using x and y shows how that traversal folds through scale order.</p>
+          <h4>Word Theory and Scale Theory</h4>
+          <p>An intriguing development in the study of well-formed scales has been the convergence of mathematical music theory and <em>combinatorics on words</em>. These subjects developed largely independently, yet they were found to share remarkably similar structures, particularly those involving continued fractions, cyclic arrangements, and balanced patterns.</p>
+          <p>The two step sizes of a nondegenerate well-formed scale, represented by A and B, form a binary word when read in scale order. When the scale begins with the initial generated pitch (n = 0, so nτ = 0), <strong>the resulting step pattern is a Christoffel word</strong>—a finite binary word characterized by a particularly regular distribution of its two letters. The step patterns of the other modes are its <em>conjugates</em>, or cyclic rotations. Thus the relationship between well-formed scales and Christoffel words is not merely one of resemblance: the same mathematical objects arise in both theories.</p>
+          <p>For irrational generators, the related theory of <strong>Sturmian words</strong> provides an infinite counterpart. Continued fractions play a central role in both theories, governing the organization of generated scales and the combinatorial structure of their associated words.</p>
+          <p>The relationship extends beyond step patterns. The cycle patterns and foldings displayed in the Explorer reveal further connections between the geometry of generated scales and the arithmetic of binary words. Subsequent research, including work on <strong>height-width duality</strong> and <strong>partitioned factors</strong>, has explored these correspondences in greater detail.</p>
           <h3>4. References and Further Reading</h3>
-          <p>Clough, John, and Gerald Myerson. “Variety and Multiplicity in Diatonic Systems.” <em>Journal of Music Theory</em> 29, no. 2 (1985): 249–270. <a href="https://doi.org/10.2307/843615" target="_blank" rel="noopener noreferrer">DOI</a>.</p>
-          <p>Halton, J. H. “The Distribution of the Sequence {nξ} (n = 0, 1, 2, …).” <em>Proceedings of the Cambridge Philosophical Society</em> 61, no. 3 (1965): 665–670. <a href="https://doi.org/10.1017/S0305004100039013" target="_blank" rel="noopener noreferrer">DOI</a>.</p>
-          <p>Slater, N. B. “Gaps and Steps for the Sequence nθ mod 1.” <em>Proceedings of the Cambridge Philosophical Society</em> 63, no. 4 (1967): 1115–1123. <a href="https://doi.org/10.1017/S0305004100042195" target="_blank" rel="noopener noreferrer">DOI</a>.</p>
-          <p>Sós, V. T. “On the Distribution mod 1 of the Sequence nα.” <em>Annales Universitatis Scientiarum Budapestinensis de Rolando Eötvös Nominatae, Sectio Mathematica</em> 1 (1958): 127–134.</p>
           <p>Carey, Norman, and David Clampitt. “Aspects of Well-Formed Scales.” Music Theory Spectrum 11, no. 2 (1989): 187–206.</p>
           <p>Carey, Norman, and David Clampitt. “Self-Similar Pitch Structures, Their Duals, and Rhythmic Analogues.” Perspectives of New Music 34, no. 2 (1996): 62–87.</p>
           <p>Carey, Norman. “Coherence and Sameness in Well-Formed and Pairwise Well-Formed Scales.” Journal of Mathematics and Music 1, no. 2 (2007): 79–98.</p>
-          <p>Clampitt, David, and Thomas Noll. “Modes, the Height-Width Duality, and Handschin&#x27;s Tone Character.” Music Theory Online 17, no. 1 (2011).</p>
-          <p>Carey, Norman, and David Clampitt. “Partitioned Factors in Christoffel and Sturmian Words.” Theoretical Computer Science 743 (2018): 53–63.</p>
-          <p>Carey, Norman, and David Clampitt. “Variety and Multiplicity for Partitioned Factors in Christoffel and Sturmian Words.” Journal of Mathematics and Music 12, no. 3 (2018): 154–170.</p>
-          <p>Wilson, Erv. “Moments of Symmetry.” 1975. Archival materials concerning generated scales and tuning systems.</p>
+          <p>Clampitt, David, and Thomas Noll. “Modes, the Height-Width Duality, and Handschin&#x27;s Tone Character.” Music Theory Online 17, no. 1 (2011). <a href="https://www.mtosmt.org/issues/mto.11.17.1/mto.11.17.1.clampitt_and_noll.html" target="_blank" rel="noopener noreferrer">Article</a>.</p>
+          <p>Carey, Norman, and David Clampitt. “Partitioned Factors in Christoffel and Sturmian Words.” Theoretical Computer Science 743 (2018): 53–63. <a href="https://doi.org/10.1016/j.tcs.2018.06.019" target="_blank" rel="noopener noreferrer">DOI</a>.</p>
+          <p>Carey, Norman, and David Clampitt. “Variety and Multiplicity for Partitioned Factors in Christoffel and Sturmian Words.” Journal of Mathematics and Music 12, no. 3 (2018): 154–170. <a href="https://doi.org/10.1080/17459737.2018.1519861" target="_blank" rel="noopener noreferrer">DOI</a>.</p>
+          <p>Wilson, Erv. Letter to John Chalmers concerning Moments of Symmetry / Tanabe Cycle. 1975. The Wilson Archives. <a href="https://anaphoria.com/mos.pdf" target="_blank" rel="noopener noreferrer">Manuscript</a>.</p>
           <p>Xenharmonic Wiki. “MOS Scale.”<br><a href="https://en.xen.wiki/w/MOS_scale" target="_blank" rel="noopener noreferrer">MOS Scale — Xenharmonic Wiki</a></p>
         </article>
       </details>
@@ -220,6 +217,10 @@
           <div class="build-toggle" id="build-toggle">
             <button id="build-generator" class="toggle-button is-active" type="button">Generator Build</button>
             <button id="build-step" class="toggle-button" type="button">Scale Step Build</button>
+          </div>
+          <div class="history-controls" aria-label="Edit history">
+            <button id="undo-edit" class="secondary-button" type="button" title="Undo (⌘/Ctrl+Z)" aria-label="Undo" disabled>↶</button>
+            <button id="redo-edit" class="secondary-button" type="button" title="Redo (⌘/Ctrl+Shift+Z)" aria-label="Redo" disabled>↷</button>
           </div>
         </div>
 
@@ -259,7 +260,7 @@
           </div>
 
           <div class="action-row">
-            <button id="apply-generator">Apply generator</button>
+            <button id="apply-generator">Build Scale</button>
           </div>
         </section>
 
@@ -288,22 +289,22 @@
               <span>Input mode</span>
               <select id="step-input-mode">
                 <option value="ratio">Step ratio</option>
-                <option value="size">Type A size</option>
+                <option value="size">A size (fraction of period)</option>
               </select>
             </label>
 
             <label id="ratio-a-label">
-              <span>A proportion</span>
+              <span>A proportion (log units)</span>
               <input id="ratio-a-input" type="text" value="0.1699250014" />
             </label>
 
             <label id="ratio-b-label">
-              <span>B proportion</span>
+              <span>B proportion (log units)</span>
               <input id="ratio-b-input" type="text" value="0.0751874965" />
             </label>
 
             <label id="type-a-size-label">
-              <span>Type A size</span>
+              <span>A size (fraction of period)</span>
               <input id="type-a-size-input" type="text" value="0.1699250014" />
             </label>
 
@@ -314,11 +315,12 @@
           </div>
 
           <div class="action-row">
-            <button id="apply-step-build">Apply scale step build</button>
+            <button id="apply-step-build">Build Scale</button>
           </div>
         </section>
 
-        <p id="status-line" class="status-line"></p>
+        <p id="pending-line" class="pending-line" role="status" aria-live="polite"></p>
+        <p id="status-line" class="status-line" role="alert"></p>
       </section>
 
       <section class="panel">
@@ -341,7 +343,7 @@
             </label>
             <label class="inline-control">
               <span>Mode order</span>
-              <select id="mode-order">
+              <select id="mode-order" title="Orders the mode choices and expresses cycle spans in step or generator order.">
                 <option value="step">Step</option>
                 <option value="generator">Generator</option>
               </select>
@@ -359,18 +361,23 @@
               <span>Timbre</span>
               <select id="timbre-select">
                 <option value="clarinet">Clarinet</option>
-                <option value="flute">Flute</option>
-                <option value="organ">Organ</option>
-                <option value="plucked">Plucked</option>
+                <option value="piano">Piano</option>
+                <option value="marimba">Marimba</option>
+                <option value="organ">Pipe organ</option>
                 <option value="sine">Sine</option>
               </select>
             </label>
             <label class="inline-control">
-              <span>Duration</span>
-              <input id="duration-slider" type="range" min="0.12" max="1.2" step="0.01" value="0.75" />
-              <strong id="duration-readout">0.75</strong>
+              <span>Tempo ♩ =</span>
+              <input id="tempo-input" type="number" min="30" max="500" step="any" value="160" aria-label="Tempo (BPM)" />
+              <span>BPM</span>
             </label>
+            <details class="sound-options">
+              <summary>Volume</summary>
+              <label><span>Volume</span><input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.72" /></label>
+            </details>
           </div>
+          <div class="notation-key" aria-label="Pattern legend">A/B: step types · a/b: cycle interval types · x/y: up/down</div>
           <div class="explorer-meta">
             <div class="explorer-meta-row">
               <p><strong>Step pattern</strong> <span id="pattern-line"></span></p>
@@ -425,6 +432,6 @@
       </section>
     </main>
 
-    <script type="module" src="./app.js?v=53"></script>
+    <script type="module" src="./app.js?v=62"></script>
   </body>
 </html>

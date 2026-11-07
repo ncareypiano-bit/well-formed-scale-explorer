@@ -5,6 +5,7 @@ import {
   buildScaleFromGenerator,
   buildScaleFromStepStructure,
   circleRows,
+  cycleIntervalLetter,
   displayNumber,
   editableNumber,
   evaluateExpression,
@@ -16,8 +17,10 @@ import {
   orderedModes,
   parseGeneratorConfiguration,
   parseBaseFrequencyInput,
-} from "./scale.js?v=17";
-import { AudioEngine } from "./audio.js?v=3";
+  preserveStepLabels,
+} from "./scale.js?v=19";
+import { AudioEngine } from "./audio.js?v=6";
+import { EditHistory, restoreSession } from "./session.js?v=3";
 
 const CIRCLE_DRAG_THRESHOLD_PX = 8;
 const CIRCLE_DEFORMATION_EPSILON = 1e-12;
@@ -37,7 +40,7 @@ const state = {
   modeOrder: MODE_ORDERS.step,
   labelMode: "notes",
   timbre: "organ",
-  duration: 0.75,
+  tempo: 160,
   scale: null,
   cycleStepTouched: false,
   activeKeyboardKeys: new Map(),
@@ -51,8 +54,19 @@ const state = {
 };
 
 const audio = new AudioEngine();
+const history = new EditHistory();
+let appliedInputs = null;
+let automaticEditField = null;
+let audioEpoch = 0;
+const uiTimers = new Set();
+const pointerNotes = new Map();
+const ringingPointerNotes = new Set();
 
 const els = {
+  undo: document.querySelector("#undo-edit"),
+  redo: document.querySelector("#redo-edit"),
+  pendingLine: document.querySelector("#pending-line"),
+  volume: document.querySelector("#volume-slider"),
   buildGenerator: document.querySelector("#build-generator"),
   buildStep: document.querySelector("#build-step"),
   viewKeyboard: document.querySelector("#view-keyboard"),
@@ -87,8 +101,7 @@ const els = {
   modeOrder: document.querySelector("#mode-order"),
   labelMode: document.querySelector("#label-mode"),
   timbreSelect: document.querySelector("#timbre-select"),
-  durationSlider: document.querySelector("#duration-slider"),
-  durationReadout: document.querySelector("#duration-readout"),
+  tempoInput: document.querySelector("#tempo-input"),
   keyboard: document.querySelector("#keyboard"),
   analysisPanel: document.querySelector("#analysis-panel"),
   statusLine: document.querySelector("#status-line"),
@@ -111,6 +124,107 @@ function setStatus(message) {
 
 function setSummary(message) {
   els.summaryLine.textContent = message;
+}
+
+const generatorFields = ["periodInput", "generatorMode", "generatorInput", "cardinalityInput", "baseFrequencyInput"];
+const stepFields = ["stepPeriodInput", "stepCardinalityInput", "typeACountInput", "stepInputMode", "ratioAInput", "ratioBInput", "typeASizeInput", "stepBaseFrequencyInput"];
+function readInputs(fields) {
+  return Object.fromEntries(fields.map(key => [key, els[key].value]));
+}
+function rememberAppliedInputs() {
+  els.generatorMode.dataset.previous = els.generatorMode.value;
+  els.stepInputMode.dataset.previous = els.stepInputMode.value;
+  appliedInputs = { generator: readInputs(generatorFields), step: readInputs(stepFields) };
+  renderPending();
+}
+function renderPending() {
+  if (!appliedInputs) return;
+  const fields = state.buildMethod === "generator" ? generatorFields : stepFields;
+  const pending = JSON.stringify(readInputs(fields)) !== JSON.stringify(appliedInputs[state.buildMethod]);
+  els.pendingLine.textContent = pending ? "Incomplete or invalid inputs — the Explorer shows the last valid scale." : "";
+}
+function fieldValue(element, read) {
+  try { return read(element.value); }
+  catch (error) { error.field = element; throw error; }
+}
+function clearInputErrors() {
+  document.querySelectorAll('[aria-invalid="true"]').forEach(element => element.removeAttribute("aria-invalid"));
+}
+function reportInputError(error, { focus = true } = {}) {
+  if (error.field) {
+    error.field.setAttribute("aria-invalid", "true");
+    if (focus) error.field.focus();
+  }
+  setStatus(error instanceof Error ? error.message : String(error));
+  renderPending();
+}
+function snapshot() {
+  const scale = state.scale;
+  return {
+    version: 2,
+    model: { period: scale.period, generatorValue: scale.generatorValue, cardinality: scale.cardinality, baseFrequency: scale.baseFrequency, stepWord: scale.stepWord },
+    mode: scale.mode ?? 0, modeOrder: state.modeOrder,
+    cycle: Number(els.cycleStep.value || 1), coset: Number(els.cosetSelect.value || 0),
+    buildMethod: state.activeBuildMethod, generatorMode: els.generatorMode.value,
+    view: state.explorerView, labelMode: els.labelMode.value, timbre: els.timbreSelect.value,
+    tempo: state.tempo, volume: Number(els.volume.value),
+    name: els.scaleNameInput.value.trim().replace(/[\r\n]/g, " "),
+  };
+}
+function recordEdit({ automaticField = null } = {}) {
+  const previousIndex = history.index;
+  if (state.scale && history.record(snapshot(), { replace: automaticField !== null && automaticField === automaticEditField })) {
+    automaticEditField = history.index < previousIndex ? null : automaticField;
+  }
+  if (automaticField === null) automaticEditField = null;
+  els.undo.disabled = !history.canUndo;
+  els.redo.disabled = !history.canRedo;
+}
+function restoreSavedSession(saved, record = true) {
+  automaticEditField = null;
+  // Validate and construct everything before touching the current session.
+  const restored = restoreSession(saved);
+  saved = restored.saved;
+  stopPlaybackUi("");
+  state.scale = restored.scale;
+  state.activeBuildMethod = saved.buildMethod;
+  state.buildMethod = saved.buildMethod;
+  state.modeOrder = saved.modeOrder;
+  state.explorerView = saved.view;
+  state.cycleStepTouched = true;
+  els.generatorMode.value = saved.generatorMode;
+  els.modeOrder.value = saved.modeOrder;
+  els.labelMode.value = saved.labelMode;
+  els.timbreSelect.value = saved.timbre;
+  state.tempo = saved.tempo;
+  els.tempoInput.value = editableNumber(saved.tempo, 12);
+  updateTempoHint();
+  els.volume.value = String(saved.volume);
+  audio.setVolume(saved.volume);
+  els.scaleNameInput.value = saved.name;
+  syncGeneratorControlsFromScale(state.scale);
+  syncStepControlsFromScale(state.scale);
+  render();
+  els.cycleStep.value = String(saved.cycle);
+  renderCosetOptions(state.scale);
+  els.cosetSelect.value = String(saved.coset);
+  clearInputErrors();
+  setStatus("");
+  render();
+  rememberAppliedInputs();
+  if (record) recordEdit();
+  else {
+    els.undo.disabled = !history.canUndo;
+    els.redo.disabled = !history.canRedo;
+  }
+}
+function afterDelay(callback, delay) {
+  const epoch = audioEpoch;
+  const timer = setTimeout(() => {
+    uiTimers.delete(timer);
+    if (epoch === audioEpoch && state.scale) callback();
+  }, delay);
+  uiTimers.add(timer);
 }
 
 function defaultScaleName(scale) {
@@ -242,43 +356,9 @@ function buildScaleDataContent(scale) {
   const totalCents = 1200 * Math.log2(scale.period);
   const data = analysisPanelData(scale);
   const filename = `${slugifyFilename(name)}-data.txt`;
-  const generatorMeta = {
-    period: els.periodInput.value.trim(),
-    generatorMode: els.generatorMode.value,
-    generatorInput: els.generatorInput.value.trim(),
-    cardinality: els.cardinalityInput.value,
-    baseFrequency: els.baseFrequencyInput.value.trim(),
-  };
-  const stepMeta = {
-    period: els.stepPeriodInput.value.trim(),
-    cardinality: els.stepCardinalityInput.value,
-    typeACount: els.typeACountInput.value,
-    inputMode: els.stepInputMode.value,
-    ratioA: els.ratioAInput.value.trim(),
-    ratioB: els.ratioBInput.value.trim(),
-    typeASize: els.typeASizeInput.value.trim(),
-    baseFrequency: els.stepBaseFrequencyInput.value.trim(),
-  };
-
   const header = [
-    "WFSE scale data v1",
-    `scale_name: ${name}`,
-    `active_build_method: ${state.activeBuildMethod}`,
-    `selected_mode: ${currentModeValue()}`,
-    `mode_order: ${state.modeOrder}`,
-    `generator_period: ${generatorMeta.period}`,
-    `generator_mode: ${generatorMeta.generatorMode}`,
-    `generator_input: ${generatorMeta.generatorInput}`,
-    `generator_cardinality: ${generatorMeta.cardinality}`,
-    `generator_base_frequency: ${generatorMeta.baseFrequency}`,
-    `step_period: ${stepMeta.period}`,
-    `step_cardinality: ${stepMeta.cardinality}`,
-    `step_type_a_count: ${stepMeta.typeACount}`,
-    `step_input_mode: ${stepMeta.inputMode}`,
-    `step_ratio_a: ${stepMeta.ratioA}`,
-    `step_ratio_b: ${stepMeta.ratioB}`,
-    `step_type_a_size: ${stepMeta.typeASize}`,
-    `step_base_frequency: ${stepMeta.baseFrequency}`,
+    "WFSE scale data v2",
+    `session: ${JSON.stringify(snapshot())}`,
     "",
     "Well-Formed Scale Explorer",
     "",
@@ -315,7 +395,7 @@ function buildScaleDataContent(scale) {
 
 function parseScaleDataContent(text) {
   const lines = String(text).replace(/\r\n/g, "\n").split("\n");
-  if (lines[0]?.trim() !== "WFSE scale data v1") {
+  if (!["WFSE scale data v1", "WFSE scale data v2"].includes(lines[0]?.trim())) {
     throw new Error("This does not look like a Well-Formed Scale Explorer data file.");
   }
 
@@ -336,72 +416,35 @@ function parseScaleDataContent(text) {
 }
 
 function importScaleData(metadata) {
-  const required = [
-    "active_build_method",
-    "selected_mode",
-    "mode_order",
-    "generator_period",
-    "generator_mode",
-    "generator_input",
-    "generator_cardinality",
-    "generator_base_frequency",
-    "step_period",
-    "step_cardinality",
-    "step_type_a_count",
-    "step_input_mode",
-    "step_ratio_a",
-    "step_ratio_b",
-    "step_type_a_size",
-    "step_base_frequency",
-  ];
-
-  required.forEach((key) => {
-    if (!(key in metadata)) {
-      throw new Error(`Scale data file is missing "${key}".`);
-    }
-  });
-
-  if (metadata.scale_name) {
-    els.scaleNameInput.value = metadata.scale_name;
+  if (metadata.session) {
+    let saved;
+    try { saved = JSON.parse(metadata.session); }
+    catch { throw new Error("The scale data contains an unreadable session."); }
+    restoreSavedSession(saved);
+    return;
   }
-
-  els.periodInput.value = metadata.generator_period;
-  els.generatorMode.value = metadata.generator_mode;
-  els.generatorInput.value = metadata.generator_input;
-  els.cardinalityInput.innerHTML = "";
-  const option = document.createElement("option");
-  option.value = metadata.generator_cardinality;
-  option.textContent = metadata.generator_cardinality;
-  els.cardinalityInput.appendChild(option);
-  els.cardinalityInput.value = metadata.generator_cardinality;
-  els.baseFrequencyInput.value = metadata.generator_base_frequency;
-
-  els.stepPeriodInput.value = metadata.step_period;
-  els.stepCardinalityInput.value = metadata.step_cardinality;
-  els.typeACountInput.value = metadata.step_type_a_count;
-  els.stepInputMode.value = metadata.step_input_mode;
-  els.ratioAInput.value = metadata.step_ratio_a;
-  els.ratioBInput.value = metadata.step_ratio_b;
-  els.typeASizeInput.value = metadata.step_type_a_size;
-  els.stepBaseFrequencyInput.value = metadata.step_base_frequency;
-
-  state.buildMethod = metadata.active_build_method === "step" ? "step" : "generator";
-  state.activeBuildMethod = state.buildMethod;
-  renderStepInputMode();
-
-  const importedModeOrder =
-    metadata.mode_order === MODE_ORDERS.generator ? MODE_ORDERS.generator : MODE_ORDERS.step;
-  state.modeOrder = importedModeOrder;
-  els.modeOrder.value = importedModeOrder;
-
-  rebuildScale({ syncPanels: false, resetCycleSelection: true });
-
-  const modeValue = Number(metadata.selected_mode || 0);
-  els.modeSelect.value = String(modeValue);
-  rebuildScale();
-
-  setStatus("");
-  setSummary("");
+  // Backward compatibility for files exported before complete session saving.
+  const required = ["active_build_method", "selected_mode", "mode_order", "generator_period", "generator_mode", "generator_input", "generator_cardinality", "generator_base_frequency", "step_period", "step_cardinality", "step_type_a_count", "step_input_mode", "step_ratio_a", "step_ratio_b", "step_type_a_size", "step_base_frequency"];
+  required.forEach(key => { if (!(key in metadata)) throw new Error(`Scale data file is missing "${key}".`); });
+  let scale;
+  if (metadata.active_build_method === "step") {
+    scale = buildScaleFromStepStructure({
+      period: evaluateExpression(metadata.step_period), cardinality: Number(metadata.step_cardinality),
+      baseFrequency: parseBaseFrequencyInput(metadata.step_base_frequency), typeACount: Number(metadata.step_type_a_count),
+      inputMode: metadata.step_input_mode, ratioA: metadata.step_ratio_a, ratioB: metadata.step_ratio_b, typeASize: metadata.step_type_a_size,
+    });
+  } else if (metadata.active_build_method === "generator") {
+    const cardinality = Number(metadata.generator_cardinality);
+    if (!Number.isInteger(cardinality) || cardinality < 2 || cardinality > 60) throw new Error("Invalid cardinality in scale data.");
+    scale = buildScaleFromGenerator({ period: evaluateExpression(metadata.generator_period), generatorMode: metadata.generator_mode,
+      generatorInput: metadata.generator_input, baseFrequency: parseBaseFrequencyInput(metadata.generator_base_frequency), cardinality });
+  } else throw new Error("Invalid build method in scale data.");
+  restoreSavedSession({
+    version: 2, model: {period: scale.period, generatorValue: scale.generatorValue, cardinality: scale.cardinality, baseFrequency: scale.baseFrequency, stepWord: scale.stepWord},
+    mode: Number(metadata.selected_mode), modeOrder: metadata.mode_order, cycle: 1, coset: 0,
+    buildMethod: metadata.active_build_method, generatorMode: metadata.generator_mode,
+    view: "keyboard", labelMode: "notes", timbre: "clarinet", duration: .75, volume: .72, name: metadata.scale_name || "",
+  });
 }
 
 function renderBuildMethod() {
@@ -497,13 +540,13 @@ function previewCircleRows(scale, rows) {
 
   try {
     const previewScale = applyMode(
-      buildScaleFromGenerator({
+      preserveStepLabels(buildScaleFromGenerator({
         period: scale.period,
         generatorMode: "log",
         generatorInput: String(previewGeneratorValue),
         baseFrequency: scale.baseFrequency,
         cardinality: scale.cardinality,
-      }),
+      }), scale),
       currentModeValue()
     );
     return modalCycleRows(previewScale);
@@ -631,43 +674,48 @@ function currentModeValue() {
 
 function numericGeneratorInputs() {
   return {
-    period: evaluateExpression(els.periodInput.value),
+    period: fieldValue(els.periodInput, value => {
+      const period = evaluateExpression(value);
+      if (!(period > 1)) throw new Error("Period must be greater than 1.");
+      return period;
+    }),
     generatorMode: els.generatorMode.value,
     generatorInput: els.generatorInput.value,
-    baseFrequency: parseBaseFrequencyInput(els.baseFrequencyInput.value),
+    baseFrequency: fieldValue(els.baseFrequencyInput, parseBaseFrequencyInput),
   };
 }
-
 function numericStepInputs() {
+  const inputMode = els.stepInputMode.value;
   return {
-    period: evaluateExpression(els.stepPeriodInput.value),
-    baseFrequency: parseBaseFrequencyInput(els.stepBaseFrequencyInput.value),
-    cardinality: Number(els.stepCardinalityInput.value),
-    typeACount: Number(els.typeACountInput.value),
-    inputMode: els.stepInputMode.value,
-    ratioA: els.ratioAInput.value,
-    ratioB: els.ratioBInput.value,
-    typeASize: els.typeASizeInput.value,
+    period: fieldValue(els.stepPeriodInput, value => {
+      const period = evaluateExpression(value);
+      if (!(period > 1)) throw new Error("Period must be greater than 1.");
+      return period;
+    }),
+    baseFrequency: fieldValue(els.stepBaseFrequencyInput, parseBaseFrequencyInput),
+    cardinality: Number(els.stepCardinalityInput.value), typeACount: Number(els.typeACountInput.value), inputMode,
+    ratioA: inputMode === "ratio" ? String(fieldValue(els.ratioAInput, evaluateExpression)) : els.ratioAInput.value,
+    ratioB: inputMode === "ratio" ? String(fieldValue(els.ratioBInput, evaluateExpression)) : els.ratioBInput.value,
+    typeASize: inputMode === "size" ? String(fieldValue(els.typeASizeInput, evaluateExpression)) : els.typeASizeInput.value,
   };
 }
-
-function buildCurrentScale() {
+function buildCurrentScale(method, preserveCardinality) {
   let baseScale;
-
-  if (state.activeBuildMethod === "step") {
-    baseScale = buildScaleFromStepStructure(numericStepInputs());
+  if (method === "step") {
+    try { baseScale = buildScaleFromStepStructure(numericStepInputs()); }
+    catch (error) {
+      if (!error.field) error.field = /Cardinality/.test(error.message) ? els.stepCardinalityInput : /count/.test(error.message) ? els.typeACountInput : els.stepInputMode.value === "size" ? els.typeASizeInput : els.ratioAInput;
+      throw error;
+    }
   } else {
-    const parsed = parseGeneratorConfiguration(numericGeneratorInputs());
-    baseScale = buildScaleFromGenerator({
-      period: parsed.period,
-      generatorMode: els.generatorMode.value,
-      generatorInput: els.generatorInput.value,
-      baseFrequency: parsed.baseFrequency,
-      cardinality: Number(els.cardinalityInput.value),
-    });
+    const inputs = numericGeneratorInputs();
+    const parsed = fieldValue(els.generatorInput, () => parseGeneratorConfiguration(inputs));
+    const selected = Number(els.cardinalityInput.value || state.cardinality);
+    const cardinality = parsed.availableCardinalities.includes(selected) || preserveCardinality ? selected : parsed.availableCardinalities[0];
+    if (!cardinality) throw new Error("No well-formed cardinalities were found for this generator (maximum N = 60).");
+    baseScale = preserveStepLabels(buildScaleFromGenerator({ ...inputs, cardinality }), state.scale);
   }
-
-  return applyMode(baseScale, currentModeValue());
+  return applyMode(baseScale, Math.min(currentModeValue(), baseScale.cardinality - 1));
 }
 
 function populateCardinalityOptions(options, selectedValue, { preserveSelectedValue = false } = {}) {
@@ -694,20 +742,13 @@ function populateCardinalityOptions(options, selectedValue, { preserveSelectedVa
   state.cardinality = nextValue;
 }
 
-function refreshCardinalityOptions(
-  preferredValue = Number(els.cardinalityInput.value || state.cardinality),
-  { preserveSelectedValue = false } = {}
-) {
-  const parsed = parseGeneratorConfiguration(numericGeneratorInputs());
-  populateCardinalityOptions(parsed.availableCardinalities, preferredValue, { preserveSelectedValue });
-}
 
 function syncStepControlsFromScale(scale) {
   els.stepPeriodInput.value = editableNumber(scale.period);
   els.stepCardinalityInput.value = String(scale.cardinality);
   els.stepBaseFrequencyInput.value = formatBaseFrequencyInput(scale.baseFrequency);
 
-  if (scale.summary.degenerate) {
+  if (scale.summary.typeBCount === 0) {
     els.typeACountInput.value = String(scale.cardinality);
     els.stepInputMode.value = "size";
     els.ratioAInput.value = "1";
@@ -716,7 +757,7 @@ function syncStepControlsFromScale(scale) {
   } else {
     els.typeACountInput.value = String(scale.summary.typeACount);
     els.stepInputMode.value = "ratio";
-    els.ratioAInput.value = editableNumber(scale.summary.ratio, 8);
+    els.ratioAInput.value = editableNumber(scale.summary.ratio, 15);
     els.ratioBInput.value = "1";
     els.typeASizeInput.value = editableNumber(scale.summary.typeASize);
   }
@@ -738,41 +779,36 @@ function syncGeneratorControlsFromScale(scale) {
   );
 }
 
-function rebuildScale({
-  syncPanels = false,
-  resetCycleSelection = false,
-  preserveGeneratorCardinality = false,
-} = {}) {
+function rebuildScale({ method = state.activeBuildMethod, resetCycleSelection = false, preserveGeneratorCardinality = false, automaticField = null, reportErrors = true } = {}) {
+  if (automaticField === null) automaticEditField = null;
+  clearInputErrors();
   try {
-    audio.stopAll();
+    const nextScale = buildCurrentScale(method, preserveGeneratorCardinality);
+    stopPlaybackUi("");
     clearCircleDeformationState();
-    if (state.activeBuildMethod === "generator") {
-      refreshCardinalityOptions(undefined, {
-        preserveSelectedValue: preserveGeneratorCardinality,
-      });
-    }
-    state.scale = buildCurrentScale();
-    if (resetCycleSelection) {
-      state.cycleStepTouched = false;
-    }
-    state.activeKeyboardKeys.clear();
-    state.activePitchClasses.clear();
-    state.activeDisplayDegrees.clear();
-    state.activeCycleSegment = null;
-    if (syncPanels) {
-      if (state.activeBuildMethod === "generator") {
-        syncStepControlsFromScale(state.scale);
-      } else {
-        syncGeneratorControlsFromScale(state.scale);
+    state.scale = nextScale;
+    state.activeBuildMethod = method;
+    if (resetCycleSelection) state.cycleStepTouched = false;
+    if (method === "generator") {
+      const rawInputs = readInputs(generatorFields);
+      syncGeneratorControlsFromScale(nextScale);
+      for (const key of automaticField ? generatorFields.filter(key => key !== "cardinalityInput") : ["generatorInput"]) {
+        els[key].value = rawInputs[key];
       }
+      syncStepControlsFromScale(nextScale);
+    } else {
+      syncGeneratorControlsFromScale(nextScale);
     }
     setStatus("");
     render();
+    rememberAppliedInputs();
+    recordEdit({ automaticField });
+    return true;
   } catch (error) {
     clearCircleDeformationState();
-    state.scale = null;
-    setStatus(error instanceof Error ? error.message : String(error));
-    render();
+    if (reportErrors) reportInputError(error, { focus: automaticField === null });
+    else { setStatus(""); renderPending(); }
+    return false;
   }
 }
 
@@ -842,7 +878,7 @@ function renderAnalysisPanel(scale) {
 }
 
 function renderModeSelect(scale) {
-  const previous = currentModeValue();
+  const previous = scale.mode ?? 0;
   const order = orderedModes(scale, state.modeOrder);
   els.modeSelect.innerHTML = "";
   order.forEach((mode) => {
@@ -857,16 +893,25 @@ function renderModeSelect(scale) {
 
 function renderCycleStepOptions(scale) {
   const previous = Number(els.cycleStep.value || 2);
+  const generatorOrder = state.modeOrder === MODE_ORDERS.generator;
+  const span = trueGeneratorSpan(scale);
+  const stepOrderStep = generatorOrder ? modularInverse(span, scale.cardinality) : 1;
+  const generatorOrderStep = generatorOrder ? 1 : span;
+  const specialCycles = [
+    [stepOrderStep, "step order"],
+    [scale.cardinality - stepOrderStep, "reverse step"],
+    [generatorOrderStep, "generator order"],
+    [scale.cardinality - generatorOrderStep, "reverse generator"],
+  ];
   els.cycleStep.innerHTML = "";
   for (let step = 1; step < scale.cardinality; step += 1) {
     const option = document.createElement("option");
     option.value = String(step);
-    option.textContent = String(step);
+    const descriptions = specialCycles.filter(([value]) => value === step).map(([, label]) => label);
+    option.textContent = descriptions.length ? `${step} — ${descriptions.join(", ")}` : String(step);
     els.cycleStep.appendChild(option);
   }
-  const fallback = 1;
-  const nextValue =
-    state.cycleStepTouched && previous >= 1 && previous < scale.cardinality ? previous : fallback;
+  const nextValue = state.cycleStepTouched && previous >= 1 && previous < scale.cardinality ? previous : 1;
   els.cycleStep.value = String(nextValue);
 }
 
@@ -924,7 +969,7 @@ function selectedCycleRows(scale, { usePreview = false } = {}) {
   return groups[cosetIndex] ?? groups[0] ?? [];
 }
 
-function cycleSegmentKinds(rows) {
+function cycleSegmentKinds(rows, scale) {
   if (rows.length <= 1) {
     return [];
   }
@@ -936,6 +981,7 @@ function cycleSegmentKinds(rows) {
       from: row.displayDegree,
       to: next.displayDegree,
       gap,
+      letter: cycleIntervalLetter(scale, row.positionIndex, next.positionIndex),
     };
   });
 
@@ -1044,12 +1090,9 @@ function symbolCounts(text, firstSymbol, secondSymbol) {
 
 function cyclePatternText(scale) {
   const rows = selectedCycleRows(scale);
-  const segments = cycleSegmentKinds(rows);
+  const segments = cycleSegmentKinds(rows, scale);
   const pattern = segments
-    .map((segment) => {
-      if (segment.kind === "small") return "b";
-      return "a";
-    })
+    .map((segment) => segment.letter)
     .join("");
   return `${pattern} ${symbolCounts(pattern, "a", "b")}`;
 }
@@ -1070,21 +1113,17 @@ function cycleFoldingText(scale) {
 
 function cycleIntervalRows(scale, { usePreview = false } = {}) {
   const rows = selectedCycleRows(scale, { usePreview });
-  const segments = cycleSegmentKinds(rows);
-  const kinds = [...new Set(segments.map((segment) => segment.kind))];
-  const orderedKinds = ["large", "small", "single"].filter((kind) => kinds.includes(kind));
-
-  return orderedKinds.map((kind) => {
-    const segment = segments.find((item) => item.kind === kind);
-    const gap = segment?.gap ?? 0;
-    const ratio = scale.period ** gap;
-    const cents = 1200 * gap * Math.log2(scale.period);
-    return {
+  const segments = cycleSegmentKinds(rows, scale);
+  return ["large", "small", "single"].flatMap(kind => {
+    const segment = segments.find(item => item.kind === kind);
+    if (!segment) return [];
+    const gap = segment.gap;
+    return [{
       kind,
       label: kind === "large" ? "Large" : kind === "small" ? "Small" : "Single",
-      raw: displayNumber(ratio, 6),
-      cents: displayNumber(cents, 3),
-    };
+      raw: displayNumber(scale.period ** gap, 6),
+      cents: displayNumber(1200 * gap * Math.log2(scale.period), 3),
+    }];
   });
 }
 
@@ -1137,19 +1176,86 @@ function activateKeyboardPitch(pitchClass, displayDegree = null) {
 }
 
 function deactivateKeyboardPitch(pitchClass, displayDegree = null) {
-  state.activePitchClasses.delete(String(pitchClass));
-  if (displayDegree !== null && displayDegree !== undefined) {
+  const held = [...state.activeKeyboardKeys.values(), ...[...pointerNotes.values(), ...ringingPointerNotes].map(item => item.key)];
+  if (!held.some(note => String(note.pitchClass) === String(pitchClass))) state.activePitchClasses.delete(String(pitchClass));
+  if (displayDegree !== null && displayDegree !== undefined && !held.some(note => String(note.displayDegree) === String(displayDegree))) {
     state.activeDisplayDegrees.delete(String(displayDegree));
   }
 }
 
+async function prepareSound(epoch = audioEpoch) {
+  const timbre = els.timbreSelect.value;
+  try {
+    if (timbre !== "sine" && !audio.instruments?.has(timbre)) setSummary("Loading instrument…");
+    await audio.ensureInstrument(timbre);
+    const ready = epoch === audioEpoch && timbre === els.timbreSelect.value;
+    if (ready && els.summaryLine.textContent === "Loading instrument…") setSummary("Instrument ready.");
+    return ready;
+  } catch (error) {
+    if (epoch === audioEpoch) setSummary(`Sound unavailable: ${error.message}`);
+    return false;
+  }
+}
+
 async function playScaleTone(noteId, frequency, summary) {
-  await audio.resume();
+  const epoch = audioEpoch;
+  if (!await prepareSound(epoch)) return false;
   audio.playTransient(noteId, [frequency], {
     timbre: els.timbreSelect.value,
-    duration: Number(els.durationSlider.value),
+    duration: cycleSpacing(),
   });
   setSummary(summary);
+  return true;
+}
+
+function renderHeldNotes() {
+  if (state.explorerView !== "keyboard") {
+    if (state.scale) renderExplorerSurface(state.scale);
+    return;
+  }
+  // Keep focused keys and active touch targets in the DOM while a chord is held.
+  els.keyboard.querySelectorAll(".key").forEach(element => {
+    element.classList.toggle("active", state.activePitchClasses.has(element.dataset.pitchClass));
+  });
+}
+
+function releasePointerNote(event) {
+  const held = pointerNotes.get(event.pointerId);
+  if (!held) return;
+  pointerNotes.delete(event.pointerId);
+  const remaining = held.startedAt === undefined ? 0 : Math.max(0, held.minimumDuration - (audio.context.currentTime - held.startedAt));
+  audio.stopSustainedNote(held.id, { minimumDuration: held.minimumDuration });
+  const finish = () => {
+    ringingPointerNotes.delete(held);
+    deactivateKeyboardPitch(held.key.pitchClass, held.key.displayDegree);
+    renderHeldNotes();
+  };
+  if (remaining > 0) {
+    ringingPointerNotes.add(held);
+    afterDelay(finish, remaining * 1000);
+  } else finish();
+}
+
+function bindKeyboardPointer(element, key) {
+  element.addEventListener("pointerdown", async event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    els.keyboard.focus({ preventScroll: true });
+    releasePointerNote(event);
+    const held = {id: `pointer:${event.pointerId}`, key, minimumDuration: event.pointerType === "mouse" ? cycleSpacing() : 0};
+    pointerNotes.set(event.pointerId, held);
+    const epoch = audioEpoch;
+    if (!await prepareSound(epoch)) {
+      if (pointerNotes.get(event.pointerId) === held) pointerNotes.delete(event.pointerId);
+      return;
+    }
+    if (pointerNotes.get(event.pointerId) !== held) return;
+    held.startedAt = audio.context?.currentTime;
+    audio.startSustainedNote(held.id, [key.frequency], {timbre: els.timbreSelect.value});
+    activateKeyboardPitch(key.pitchClass, key.displayDegree);
+    setSummary(keySummary(key));
+    renderHeldNotes();
+  });
 }
 
 function renderKeyboard(scale) {
@@ -1205,19 +1311,21 @@ function renderKeyboard(scale) {
   }
 
   const playKey = async (key, indexPrefix) => {
-    await playScaleTone(`${indexPrefix}-${key.id}`, key.frequency, keySummary(key));
+    if (!await playScaleTone(`${indexPrefix}-${key.id}`, key.frequency, keySummary(key))) return;
     activateKeyboardPitch(key.pitchClass, key.displayDegree);
-    renderExplorerSurface(scale);
-    setTimeout(() => {
+    renderHeldNotes();
+    afterDelay(() => {
       deactivateKeyboardPitch(key.pitchClass, key.displayDegree);
-      renderExplorerSurface(scale);
-    }, Number(els.durationSlider.value) * 900);
+      renderHeldNotes();
+    }, cycleSpacing() * 900);
   };
 
   whiteKeys.forEach((key, index) => {
     const element = document.createElement("button");
     element.type = "button";
     element.className = "key white-key";
+    element.dataset.pitchClass = String(key.pitchClass);
+    element.setAttribute("aria-label", `Degree ${key.displayDegree}, ${displayNumber(key.frequency)} Hz${mappedKeys[index] ? `, computer key ${mappedKeys[index]}` : ""}`);
     if (key.highlighted) element.classList.add("highlighted");
     if (state.activePitchClasses.has(String(key.pitchClass))) element.classList.add("active");
 
@@ -1226,8 +1334,9 @@ function renderKeyboard(scale) {
       <span class="key-label">${keyboardLabel(key, scale, els.labelMode.value)}</span>
     `;
 
-    element.addEventListener("mousedown", async () => {
-      playKey(key, `mouse-${index}`);
+    bindKeyboardPointer(element, key);
+    element.addEventListener("click", event => {
+      if (event.detail === 0) playKey(key, `mouse-${index}`);
     });
 
     whiteRow.appendChild(element);
@@ -1237,14 +1346,16 @@ function renderKeyboard(scale) {
     const element = document.createElement("button");
     element.type = "button";
     element.className = "key color-key";
+    element.dataset.pitchClass = String(key.pitchClass);
+    element.setAttribute("aria-label", `Auxiliary tone, ${displayNumber(key.frequency)} Hz`);
     element.style.setProperty("--x", String(key.x));
     element.style.setProperty("--w", String(key.width));
     if (state.activePitchClasses.has(String(key.pitchClass))) element.classList.add("active");
     element.innerHTML = `<span class="color-key-degree">${shiftedKeyLabel(mappedKeys[key.gapIndex])}</span>`;
 
-    element.addEventListener("mousedown", async (event) => {
-      event.preventDefault();
-      playKey(key, `color-${index}`);
+    bindKeyboardPointer(element, key);
+    element.addEventListener("click", event => {
+      if (event.detail === 0) playKey(key, `color-${index}`);
     });
 
     colorLayer.appendChild(element);
@@ -1281,7 +1392,7 @@ function renderCircle(scale) {
   const rows = cycleRowsForCurrentView(scale, { usePreview: true });
   const renderedRows = visibleCircleRows(rows, ringRadius);
   const cycleRows = selectedCycleRows(scale, { usePreview: true });
-  const segmentKinds = cycleSegmentKinds(cycleRows);
+  const segmentKinds = cycleSegmentKinds(cycleRows, scale);
   const deformationInfo = circleDeformationInfoForScale(scale);
   const container = document.createElement("div");
   container.className = "circle-stage";
@@ -1290,18 +1401,20 @@ function renderCircle(scale) {
   const svg = document.createElementNS(svgNS, "svg");
   svg.setAttribute("viewBox", "0 0 620 620");
   svg.setAttribute("class", "scale-circle-svg");
+  svg.setAttribute("role", "group");
+  svg.setAttribute("aria-label", "Scale pitches");
   const tonicGeneratorIndex = rows[0]?.fromGeneratorIndex ?? 0;
 
   const playCircleTone = async (row, index, raised) => {
     const frequency = raised ? row.frequency * scale.period : row.frequency;
     const summary = `${raised ? "Raised scale tone" : "Scale tone"} at ${displayNumber(frequency)} Hz`;
-    await playScaleTone(`circle-${index}-${raised ? "raised" : "plain"}`, frequency, summary);
+    if (!await playScaleTone(`circle-${index}-${raised ? "raised" : "plain"}`, frequency, summary)) return;
     activateKeyboardPitch(row.pitchClass, row.displayDegree);
     renderExplorerSurface(scale);
-    setTimeout(() => {
+    afterDelay(() => {
       deactivateKeyboardPitch(row.pitchClass, row.displayDegree);
       renderExplorerSurface(scale);
-    }, Number(els.durationSlider.value) * 900);
+    }, cycleSpacing() * 900);
   };
 
   const commitCircleDeformation = (nextGeneratorValue) => {
@@ -1317,19 +1430,29 @@ function renderCircle(scale) {
       return;
     }
 
-    if (els.generatorMode.value === "log") {
-      els.generatorInput.value = editableNumber(committedGeneratorValue);
-    } else {
-      els.generatorInput.value = editableNumber(scale.period ** committedGeneratorValue);
-    }
-
+    // A drag edits the applied scale, independently of unfinished builder inputs.
+    const drafts = [generatorFields, stepFields].map(fields => readInputs(fields));
+    const baselines = [appliedInputs?.generator, appliedInputs?.step];
+    const nextScale = applyMode(preserveStepLabels(buildScaleFromGenerator({
+      period: scale.period, generatorMode: "log", generatorInput: String(committedGeneratorValue),
+      baseFrequency: scale.baseFrequency, cardinality: scale.cardinality,
+    }), scale), scale.mode);
+    stopPlaybackUi("");
+    state.scale = nextScale;
     state.activeBuildMethod = "generator";
-    setSummary(`Deformed scale committed at log_p(g) = ${displayNumber(committedGeneratorValue, 6)}`);
-    rebuildScale({
-      syncPanels: true,
-      resetCycleSelection: false,
-      preserveGeneratorCardinality: true,
+    syncGeneratorControlsFromScale(nextScale);
+    syncStepControlsFromScale(nextScale);
+    render();
+    rememberAppliedInputs();
+    drafts.forEach((draft, index) => {
+      for (const [key, value] of Object.entries(draft)) {
+        if (baselines[index] && value !== baselines[index][key]) els[key].value = value;
+      }
     });
+    renderStepInputMode();
+    renderPending();
+    setSummary(`Deformed scale applied at log_p(g) = ${displayNumber(committedGeneratorValue, 6)}`);
+    recordEdit();
   };
 
   const ring = document.createElementNS(svgNS, "circle");
@@ -1380,7 +1503,18 @@ function renderCircle(scale) {
     hit.setAttribute("cx", String(point.x));
     hit.setAttribute("cy", String(point.y));
     hit.setAttribute("r", "28");
+    hit.setAttribute("tabindex", "0");
+    hit.setAttribute("role", "button");
+    hit.setAttribute("aria-label", `Degree ${row.displayDegree}, ${displayNumber(row.frequency)} Hz. Enter to play; Shift+Enter one period higher.`);
+    hit.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        event.stopPropagation();
+        void playCircleTone(row, row.displayDegree, event.shiftKey);
+      }
+    });
     hit.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
       event.preventDefault();
 
       const circleRect = svg.getBoundingClientRect();
@@ -1410,7 +1544,7 @@ function renderCircle(scale) {
       state.circleDeformation.dragSession = dragSession;
 
       const handlePointerMove = (moveEvent) => {
-        if (moveEvent.pointerId !== dragSession.pointerId) {
+        if (moveEvent.pointerId !== dragSession.pointerId || state.circleDeformation.dragSession !== dragSession) {
           return;
         }
 
@@ -1466,6 +1600,7 @@ function renderCircle(scale) {
         window.removeEventListener("pointermove", handlePointerMove);
         window.removeEventListener("pointerup", handlePointerUp);
         window.removeEventListener("pointercancel", handlePointerCancel);
+        if (state.circleDeformation.dragSession !== dragSession) return;
         state.circleDeformation.dragSession = null;
 
         if (cancelled) {
@@ -1566,6 +1701,10 @@ function render() {
   const scale = state.scale;
   renderBuildMethod();
   renderExplorerView();
+  renderPending();
+  els.exportData.disabled = !scale;
+  els.exportScala.disabled = !scale;
+  els.playCycle.disabled = !scale;
   if (!scale) {
     updateScaleNamePlaceholder(null);
     els.generatorSpanLine.textContent = "";
@@ -1584,7 +1723,7 @@ function render() {
   updateScaleNamePlaceholder(scale);
   renderAnalysisPanel(scale);
   els.generatorSpanLine.textContent = String(trueGeneratorSpan(scale));
-  els.patternLine.textContent = scale.stepWord || "";
+  els.patternLine.textContent = scale.displayStepWord || scale.stepWord || "";
   els.cyclePatternLine.textContent = cyclePatternText(scale);
   els.cycleFoldingLine.textContent = cycleFoldingText(scale);
   renderIntervalPanel(scale);
@@ -1594,13 +1733,20 @@ function render() {
 function isEditableTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(
-    target.closest("input, textarea, select, button") ||
+    target.closest("input, textarea, select") ||
     target.isContentEditable
   );
 }
 
 function stopPlaybackUi(message = "Playback stopped.") {
+  audioEpoch += 1;
+  clearCircleDeformationState();
+  uiTimers.forEach(timer => clearTimeout(timer));
+  uiTimers.clear();
   audio.stopAll();
+  pointerNotes.clear();
+  ringingPointerNotes.clear();
+  state.activeKeyboardKeys.clear();
   state.activeCycleSegment = null;
   state.activePitchClasses.clear();
   state.activeDisplayDegrees.clear();
@@ -1612,11 +1758,33 @@ function stopPlaybackUi(message = "Playback stopped.") {
   setSummary(message);
 }
 
+function cycleSpacing() {
+  return 60 / state.tempo;
+}
+function updateTempoHint() {
+  els.tempoInput.title = `${cycleSpacing().toFixed(3)} seconds per beat; one cycle note per beat`;
+}
+function applyTempo() {
+  const tempo = Number(els.tempoInput.value);
+  if (!Number.isFinite(tempo) || tempo < 30 || tempo > 500) {
+    els.tempoInput.value = String(state.tempo);
+    setStatus("Enter a tempo from 30 to 500 BPM.");
+    updateTempoHint();
+    return;
+  }
+  stopPlaybackUi("");
+  state.tempo = tempo;
+  setStatus("");
+  updateTempoHint();
+}
+
 async function playCycleSequence(rows, label) {
   if (!state.scale || rows.length === 0) return;
-  await audio.resume();
+  stopPlaybackUi("");
+  const epoch = audioEpoch;
+  if (!await prepareSound(epoch)) return;
   state.activeCycleSegment = null;
-  const interval = Math.max(0.12, Number(els.durationSlider.value) * 0.48);
+  const interval = cycleSpacing();
   audio.schedulePlayback(rows, {
     timbre: els.timbreSelect.value,
     duration: interval,
@@ -1630,20 +1798,20 @@ async function playCycleSequence(rows, label) {
       setSummary(`${label}: degree ${degree} at ${displayNumber(row.frequency)} Hz`);
       activateKeyboardPitch(row.activePitchClass ?? row.pitchClass, degree);
       renderExplorerSurface(state.scale);
-      setTimeout(() => {
+      afterDelay(() => {
         deactivateKeyboardPitch(row.activePitchClass ?? row.pitchClass, degree);
         renderExplorerSurface(state.scale);
       }, interval * 900);
     },
   });
-  setTimeout(() => {
+  afterDelay(() => {
     state.activeCycleSegment = null;
     renderExplorerSurface(state.scale);
   }, interval * 1000 * Math.max(1, rows.length));
 }
 
 async function handleComputerKeyDown(event) {
-  if (state.explorerView !== "keyboard" || !state.scale) return;
+  if (state.explorerView !== "keyboard" || !state.scale || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
   if (isEditableTarget(event.target)) return;
   const key = normalizedComputerKey(event);
   const { whiteKeys, blackKeys } = keyboardItems(state.scale);
@@ -1655,56 +1823,37 @@ async function handleComputerKeyDown(event) {
   if (index === -1 || !note || state.activeKeyboardKeys.has(activeKey)) return;
 
   event.preventDefault();
-  await audio.resume();
+  const epoch = audioEpoch;
   state.activeKeyboardKeys.set(activeKey, note);
+  if (!await prepareSound(epoch) || state.activeKeyboardKeys.get(activeKey) !== note) {
+    if (state.activeKeyboardKeys.get(activeKey) === note) state.activeKeyboardKeys.delete(activeKey);
+    return;
+  }
   activateKeyboardPitch(note.pitchClass, note.displayDegree);
-  renderExplorerSurface(state.scale);
+  renderHeldNotes();
 
-  const frequencies = [...state.activeKeyboardKeys.values()].map((item) => item.frequency);
-  audio.startSustainedNote("computer", frequencies, {
+  audio.startSustainedNote(`computer:${activeKey}`, [note.frequency], {
     timbre: els.timbreSelect.value,
   });
   setSummary(`Computer key ${event.shiftKey ? "Shift+" : ""}${key}: ${keySummary(note)}`);
 }
 
 function handleComputerKeyUp(event) {
-  if (state.explorerView !== "keyboard") return;
-  if (isEditableTarget(event.target)) return;
   const key = normalizedComputerKey(event);
-  if (event.key === "Shift") {
-    for (const activeKey of [...state.activeKeyboardKeys.keys()]) {
-      if (activeKey.startsWith("shift:")) {
-        const released = state.activeKeyboardKeys.get(activeKey);
-        state.activeKeyboardKeys.delete(activeKey);
-        if (released) deactivateKeyboardPitch(released.pitchClass);
-      }
-    }
-  }
-
-  const activeKey = event.shiftKey ? `shift:${key}` : key;
-  const fallbackShiftKey = `shift:${key}`;
-  const releaseKey = state.activeKeyboardKeys.has(activeKey)
-    ? activeKey
-    : fallbackShiftKey;
-  if (!state.activeKeyboardKeys.has(releaseKey)) return;
-  event.preventDefault();
-
-  const released = state.activeKeyboardKeys.get(releaseKey);
-  state.activeKeyboardKeys.delete(releaseKey);
-  if (released) {
+  const releases = event.key === "Shift"
+    ? [...state.activeKeyboardKeys.keys()].filter(active => active.startsWith("shift:"))
+    : [key, `shift:${key}`];
+  let changed = false;
+  for (const active of releases) {
+    const released = state.activeKeyboardKeys.get(active);
+    if (!released) continue;
+    changed = true;
+    state.activeKeyboardKeys.delete(active);
+    audio.stopSustainedNote(`computer:${active}`);
     deactivateKeyboardPitch(released.pitchClass, released.displayDegree);
   }
-
-  if (state.activeKeyboardKeys.size === 0) {
-    audio.stopSustainedNote("computer");
-  } else {
-    const frequencies = [...state.activeKeyboardKeys.values()].map((item) => item.frequency);
-    audio.startSustainedNote("computer", frequencies, {
-      timbre: els.timbreSelect.value,
-    });
-  }
-
-  renderExplorerSurface(state.scale);
+  if (!changed) return;
+  renderHeldNotes();
 }
 
 function handleBuildApplyKeyDown(event) {
@@ -1743,33 +1892,38 @@ els.buildStep.addEventListener("click", () => {
 
 els.viewKeyboard.addEventListener("click", () => {
   state.explorerView = "keyboard";
+  stopPlaybackUi("");
   render();
 });
 
 els.viewCircle.addEventListener("click", () => {
   state.explorerView = "circle";
-  state.activeKeyboardKeys.clear();
-  audio.stopSustainedNote("computer");
+  stopPlaybackUi("");
   render();
 });
 
 els.applyGenerator.addEventListener("click", () => {
-  state.activeBuildMethod = "generator";
   rebuildScale({
-    syncPanels: true,
+    method: "generator",
     resetCycleSelection: true,
     preserveGeneratorCardinality: false,
   });
 });
 els.applyStepBuild.addEventListener("click", () => {
-  state.activeBuildMethod = "step";
   rebuildScale({
-    syncPanels: true,
+    method: "step",
     resetCycleSelection: true,
     preserveGeneratorCardinality: false,
   });
 });
-els.modeSelect.addEventListener("change", () => rebuildScale());
+els.modeSelect.addEventListener("change", () => {
+  if (!state.scale) return;
+  const mode = currentModeValue();
+  stopPlaybackUi("");
+  state.scale = applyMode(state.scale, mode);
+  render();
+  recordEdit();
+});
 els.modeOrder.addEventListener("change", () => {
   const nextOrder = els.modeOrder.value;
   if (nextOrder === state.modeOrder || !state.scale) {
@@ -1790,35 +1944,99 @@ els.modeOrder.addEventListener("change", () => {
   state.modeOrder = nextOrder;
   els.cycleStep.value = String(nextCycle === 0 ? modulus : nextCycle);
   state.cycleStepTouched = true;
+  stopPlaybackUi("");
   render();
+  recordEdit();
 });
 els.cycleStep.addEventListener("change", () => {
   state.cycleStepTouched = true;
+  stopPlaybackUi("");
   render();
+  recordEdit();
 });
-els.cosetSelect.addEventListener("change", render);
-els.cardinalityInput.addEventListener("change", () => {
-  state.activeBuildMethod = "generator";
-  rebuildScale({
-    syncPanels: true,
-    resetCycleSelection: true,
-    preserveGeneratorCardinality: false,
-  });
-});
+els.cosetSelect.addEventListener("change", () => { stopPlaybackUi(""); render(); recordEdit(); });
+
 els.labelMode.addEventListener("change", render);
 els.generatorMode.addEventListener("change", () => {
-  rebuildScale({
-    syncPanels: state.activeBuildMethod === "generator",
-    resetCycleSelection: true,
-    preserveGeneratorCardinality: false,
-  });
+  const previousMode = appliedInputs?.generator.generatorMode || "generator";
+  const nextMode = els.generatorMode.value;
+  const oldMode = els.generatorMode.dataset.previous || previousMode;
+  try {
+    const period = fieldValue(els.periodInput, evaluateExpression);
+    if (!(period > 1)) throw new Error("Period must be greater than 1 to convert the generator.");
+    const entered = fieldValue(els.generatorInput, evaluateExpression);
+    const converted = oldMode === "generator" ? Math.log(entered) / Math.log(period) : period ** entered;
+    if (!Number.isFinite(converted) || !(converted > 0)) throw new Error("Enter a positive generator value before changing units.");
+    els.generatorInput.value = editableNumber(converted, 15);
+    els.generatorMode.dataset.previous = nextMode;
+    if (appliedInputs && els.periodInput.value === appliedInputs.generator.periodInput) {
+      const applied = appliedInputs.generator;
+      const original = oldMode === "generator" ? state.scale?.generator : state.scale?.generatorValue;
+      if (original !== undefined && Math.abs(entered - original) < 1e-12) {
+        applied.generatorMode = nextMode;
+        applied.generatorInput = els.generatorInput.value;
+      }
+    }
+    clearInputErrors();
+    setStatus("");
+    renderPending();
+    automaticallyBuild("generatorMode", true);
+    automaticEditField = null;
+  } catch (error) {
+    els.generatorMode.value = oldMode;
+    reportInputError(error);
+  }
 });
-els.stepInputMode.addEventListener("change", renderStepInputMode);
-els.timbreSelect.addEventListener("change", () => {
-  setSummary(`Timbre: ${els.timbreSelect.value}`);
+els.stepInputMode.addEventListener("change", () => {
+  const oldMode = els.stepInputMode.dataset.previous || "ratio";
+  const nextMode = els.stepInputMode.value;
+  try {
+    const n = Number(els.stepCardinalityInput.value);
+    const p = Number(els.typeACountInput.value);
+    if (!Number.isInteger(n) || n < 2 || n > 60 || !Number.isInteger(p) || p < 0 || p > n) throw new Error("Enter valid step counts before changing input mode.");
+    let a = 1 / n;
+    let b = 1 / n;
+    if (p > 0 && p < n) {
+      if (oldMode === "ratio") {
+        const ratioA = fieldValue(els.ratioAInput, evaluateExpression);
+        const ratioB = fieldValue(els.ratioBInput, evaluateExpression);
+        if (!(ratioA > 0 && ratioB > 0)) throw new Error("Step proportions must be positive.");
+        const total = p * ratioA + (n - p) * ratioB;
+        a = ratioA / total;
+        b = ratioB / total;
+      } else {
+        a = fieldValue(els.typeASizeInput, evaluateExpression);
+        b = (1 - p * a) / (n - p);
+        if (!(a > 0 && b > 0)) throw new Error("Positive step sizes are needed to switch to proportion input.");
+      }
+    }
+    if (nextMode === "size") els.typeASizeInput.value = editableNumber(a, 15);
+    else { els.ratioAInput.value = editableNumber(a / b, 15); els.ratioBInput.value = "1"; }
+    els.stepInputMode.dataset.previous = nextMode;
+    if (state.scale && n === state.scale.cardinality && p === state.scale.summary.typeACount &&
+        Math.abs(a - state.scale.summary.typeASize) < 1e-12 &&
+        els.stepPeriodInput.value === appliedInputs?.step.stepPeriodInput &&
+        els.stepBaseFrequencyInput.value === appliedInputs?.step.stepBaseFrequencyInput) {
+      appliedInputs.step = readInputs(stepFields);
+    }
+    clearInputErrors();
+    setStatus("");
+    automaticallyBuild("stepInputMode", true);
+    automaticEditField = null;
+  } catch (error) {
+    els.stepInputMode.value = oldMode;
+    reportInputError(error);
+  }
+  renderStepInputMode();
+  renderPending();
 });
-els.durationSlider.addEventListener("input", () => {
-  els.durationReadout.textContent = Number(els.durationSlider.value).toFixed(2);
+els.timbreSelect.addEventListener("change", async () => {
+  stopPlaybackUi("");
+  if (await prepareSound()) setSummary(`Timbre: ${els.timbreSelect.selectedOptions?.[0]?.textContent ?? els.timbreSelect.value}`);
+});
+els.tempoInput.addEventListener("change", applyTempo);
+els.tempoInput.addEventListener("keydown", event => {
+  if (event.key === "Enter") { event.preventDefault(); applyTempo(); }
 });
 els.exportScala.addEventListener("click", () => {
   if (!state.scale) return;
@@ -1861,10 +2079,66 @@ els.playCycle.addEventListener("click", () => {
 });
 els.stopPlayback.addEventListener("click", () => stopPlaybackUi());
 
+function restoreHistorySnapshot(saved) {
+  // Undo mathematical edits without moving the user's view or changing sound preferences.
+  restoreSavedSession({ ...saved, view: state.explorerView, labelMode: els.labelMode.value,
+    timbre: els.timbreSelect.value, tempo: state.tempo, volume: Number(els.volume.value) }, false);
+}
+els.undo.addEventListener("click", () => {
+  const previous = history.undo();
+  if (previous) restoreHistorySnapshot(previous);
+});
+els.redo.addEventListener("click", () => {
+  const next = history.redo();
+  if (next) restoreHistorySnapshot(next);
+});
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape") { stopPlaybackUi(); return; }
+  const textEditing = event.target instanceof HTMLElement && (event.target.closest('input, textarea') || event.target.isContentEditable);
+  if (textEditing || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+  const key = event.key.toLowerCase();
+  if (key === "z" || key === "y") {
+    event.preventDefault();
+    if (key === "y" || event.shiftKey) els.redo.click();
+    else els.undo.click();
+  }
+});
+window.addEventListener("blur", () => stopPlaybackUi(""));
+document.addEventListener("visibilitychange", () => { if (document.hidden) stopPlaybackUi(""); });
+function automaticallyBuild(field, reportErrors = false) {
+  const fields = state.buildMethod === "generator" ? generatorFields : stepFields;
+  if (!fields.includes(field) || !appliedInputs) return;
+  if (JSON.stringify(readInputs(fields)) === JSON.stringify(appliedInputs[state.buildMethod])) {
+    clearInputErrors();
+    setStatus("");
+    return;
+  }
+  rebuildScale({ method: state.buildMethod, automaticField: field, reportErrors });
+}
+for (const key of [...generatorFields, ...stepFields]) {
+  // Unit selectors must convert their values before rebuilding.
+  if (["generatorMode", "stepInputMode"].includes(key)) continue;
+  els[key].addEventListener("input", () => {
+    if (automaticEditField !== key) automaticEditField = null;
+    els[key].removeAttribute("aria-invalid");
+    automaticallyBuild(key);
+    renderPending();
+  });
+  els[key].addEventListener("change", () => {
+    automaticallyBuild(key, true);
+    automaticEditField = null;
+  });
+  els[key].addEventListener("blur", () => { automaticEditField = null; });
+}
+els.scaleNameInput.addEventListener("change", recordEdit);
+els.volume.addEventListener("input", () => audio.setVolume(Number(els.volume.value)));
+
 window.addEventListener("keydown", handleComputerKeyDown);
 window.addEventListener("keydown", handleBuildApplyKeyDown);
 window.addEventListener("keyup", handleComputerKeyUp);
+window.addEventListener("pointerup", releasePointerNote);
+window.addEventListener("pointercancel", releasePointerNote);
 
-els.durationReadout.textContent = Number(els.durationSlider.value).toFixed(2);
+updateTempoHint();
 renderStepInputMode();
 rebuildScale({ syncPanels: true, resetCycleSelection: true });

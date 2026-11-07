@@ -1,208 +1,155 @@
-const TIMBRES = {
-  organ: [
-    [1, 0.78],
-    [2, 0.28],
-    [3, 0.16],
-    [4, 0.08],
-    [5, 0.04],
-  ],
-  sine: [[1, 1]],
-  clarinet: [
-    [1, 0.82],
-    [3, 0.38],
-    [5, 0.18],
-    [7, 0.08],
-  ],
-  flute: [
-    [1, 0.92],
-    [2, 0.1],
-    [3, 0.04],
-  ],
-  plucked: [
-    [1, 0.9],
-    [2, 0.26],
-    [3, 0.14],
-    [4, 0.07],
-  ],
-};
+import { SAMPLE_BANKS } from './sample-bank.js?v=1';
 
 export class AudioEngine {
-  constructor() {
+  constructor({ fetcher = (...args) => fetch(...args) } = {}) {
+    this.volume = .72;
     this.context = null;
     this.master = null;
     this.activeNotes = new Map();
     this.playbackTimers = [];
     this.playbackNodes = [];
+    this.instruments = new Map();
+    this.loading = new Map();
+    this.fetcher = fetcher;
   }
 
   async resume() {
     if (!this.context) {
       this.context = new AudioContext();
       this.master = this.context.createGain();
-      this.master.gain.value = 0.72;
+      this.master.gain.value = this.volume;
       this.master.connect(this.context.destination);
     }
+    if (this.context.state !== 'running') await this.context.resume();
+  }
 
-    if (this.context.state !== "running") {
-      await this.context.resume();
+  async ensureInstrument(timbre) {
+    await this.resume();
+    if (timbre === 'sine' || this.instruments.has(timbre)) return;
+    if (!SAMPLE_BANKS[timbre]) throw new Error('Unknown instrument.');
+    if (!this.loading.has(timbre)) {
+      const promise = Promise.all(SAMPLE_BANKS[timbre].samples.map(async sample => {
+        const response = await this.fetcher(new URL(sample.url, import.meta.url));
+        if (!response.ok) throw new Error('Could not load instrument recordings. Please try again.');
+        const buffer = await this.context.decodeAudioData(await response.arrayBuffer());
+        return { ...sample, buffer };
+      })).then(samples => this.instruments.set(timbre, samples))
+        .finally(() => this.loading.delete(timbre));
+      this.loading.set(timbre, promise);
     }
+    await this.loading.get(timbre);
+  }
+
+  setVolume(value) {
+    this.volume = Math.min(1, Math.max(0, value));
+    if (this.master) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, .02);
+  }
+
+  releaseVoice(voice, time, release = voice.release) {
+    const param = voice.masterGain.gain;
+    // Also cancels voices scheduled in the future when Stop is pressed.
+    if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(time);
+    else {
+      param.cancelScheduledValues(time);
+      param.setValueAtTime(Math.max(param.value, .0001), time);
+    }
+    param.exponentialRampToValueAtTime(.0001, time + release);
+    for (const source of voice.oscillators) source.stop(time + release + .01);
   }
 
   stopAll() {
-    this.playbackTimers.forEach((timer) => clearTimeout(timer));
+    this.playbackTimers.forEach(clearTimeout);
     this.playbackTimers = [];
     if (this.context) {
-      const now = this.context.currentTime;
-      this.playbackNodes.forEach(({ masterGain, oscillators }) => {
-        if (masterGain) {
-          masterGain.gain.cancelScheduledValues(now);
-          masterGain.gain.setValueAtTime(Math.max(masterGain.gain.value, 0.0001), now);
-          masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
-        }
-        oscillators.forEach((oscillator) => {
-          try {
-            oscillator.stop(now + 0.04);
-          } catch (_error) {
-            // Ignore already-stopped nodes.
-          }
-        });
-      });
+      for (const voice of this.playbackNodes) this.releaseVoice(voice, this.context.currentTime, .025);
     }
     this.playbackNodes = [];
-    for (const noteId of [...this.activeNotes.keys()]) {
-      this.stopSustainedNote(noteId);
+    this.activeNotes.clear();
+  }
+
+  createVoice(noteId, frequencies, options, start, duration = null) {
+    if (!this.context || !this.master) return;
+    const timbre = options.timbre ?? 'organ';
+    const bank = SAMPLE_BANKS[timbre];
+    const samples = this.instruments.get(timbre);
+    if (timbre !== 'sine' && !samples) throw new Error('Instrument is still loading.');
+    const masterGain = this.context.createGain();
+    const level = (timbre === 'sine' ? .12 : .85) / Math.max(1, Math.sqrt(frequencies.length));
+    masterGain.gain.setValueAtTime(.0001, start);
+    masterGain.gain.linearRampToValueAtTime(level, start + .005);
+    masterGain.connect(this.master);
+    const voice = { masterGain, oscillators: [], startTime: start, release: bank?.release ?? .025 };
+    for (const frequency of frequencies) {
+      if (!Number.isFinite(frequency) || frequency <= 0) continue;
+      let source;
+      if (timbre === 'sine') {
+        source = this.context.createOscillator();
+        source.type = 'sine';
+        source.frequency.setValueAtTime(frequency, start);
+      } else {
+        const sample = samples.reduce((best, item) => Math.abs(Math.log2(frequency / item.rootHz)) < Math.abs(Math.log2(frequency / best.rootHz)) ? item : best);
+        source = this.context.createBufferSource();
+        source.buffer = sample.buffer;
+        source.playbackRate.setValueAtTime(frequency / sample.rootHz, start);
+        source.loop = bank.sustained;
+        if (source.loop) { source.loopStart = sample.loopStart; source.loopEnd = sample.loopEnd; }
+      }
+      source.connect(masterGain);
+      voice.oscillators.push(source);
     }
+    if (!voice.oscillators.length) { masterGain.disconnect(); return; }
+    this.playbackNodes.push(voice);
+    let remaining = voice.oscillators.length;
+    for (const source of voice.oscillators) {
+      source.onended = () => {
+        source.disconnect();
+        if (--remaining === 0) {
+          masterGain.disconnect();
+          this.playbackNodes = this.playbackNodes.filter(item => item !== voice);
+          if (this.activeNotes.get(noteId) === voice) this.activeNotes.delete(noteId);
+        }
+      };
+      source.start(start);
+    }
+    if (duration !== null) {
+      const end = start + Math.max(.01, duration);
+      // Gate stays open to the next beat. Only the release overlaps the next note.
+      masterGain.gain.setValueAtTime(level, end);
+      masterGain.gain.exponentialRampToValueAtTime(.0001, end + voice.release);
+      voice.oscillators.forEach(source => source.stop(end + voice.release + .01));
+    }
+    return voice;
   }
 
   playTransient(noteId, frequencies, options) {
-    if (!this.context || !this.master) return;
-    const now = this.context.currentTime;
-    const duration = options.duration ?? 0.45;
-    const timbre = TIMBRES[options.timbre] ?? TIMBRES.organ;
-    const gainAmount = 0.18 / Math.max(1, Math.sqrt(frequencies.length));
-
-    frequencies.forEach((frequency) => {
-      timbre.forEach(([harmonic, amplitude]) => {
-        const oscillator = this.context.createOscillator();
-        const gain = this.context.createGain();
-        oscillator.type = "sine";
-        oscillator.frequency.value = frequency * harmonic;
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.linearRampToValueAtTime(gainAmount * amplitude, now + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-        oscillator.connect(gain).connect(this.master);
-        oscillator.start(now);
-        oscillator.stop(now + duration + 0.03);
-      });
-    });
+    return this.createVoice(noteId, frequencies, options, this.context?.currentTime ?? 0, options.duration ?? .45);
   }
 
   playPlaybackTransient(noteId, frequencies, options) {
-    if (!this.context || !this.master) return;
-
-    const timbreName = options.timbre ?? "organ";
-    const timbre = TIMBRES[timbreName] ?? TIMBRES.organ;
-    const startTime = this.context.currentTime;
-    const noteDuration = Math.max(options.duration ?? 0.45, 0.08);
-    const gainAmount = 0.16 / Math.max(1, Math.sqrt(frequencies.length));
-    const attack = Math.min(0.025, noteDuration * 0.2);
-    const decay = Math.min(0.09, Math.max(0.03, noteDuration * 0.2));
-    const sustainLevel = 0.72;
-    const holdRatio = timbreName === "plucked" ? 0.65 : 1;
-    const releaseStart = Math.max(
-      startTime + attack + decay,
-      startTime + noteDuration * holdRatio
-    );
-
-    const masterGain = this.context.createGain();
-    masterGain.gain.setValueAtTime(0.0001, startTime);
-    masterGain.gain.linearRampToValueAtTime(1, startTime + attack);
-    masterGain.gain.setValueAtTime(1, releaseStart);
-    masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + noteDuration);
-    masterGain.connect(this.master);
-
-    const oscillators = [];
-    frequencies.forEach((frequency) => {
-      timbre.forEach(([harmonic, amplitude]) => {
-        const oscillator = this.context.createOscillator();
-        const gain = this.context.createGain();
-        oscillator.type = "sine";
-        oscillator.frequency.value = frequency * harmonic;
-        gain.gain.setValueAtTime(0.0001, startTime);
-        gain.gain.linearRampToValueAtTime(gainAmount * amplitude, startTime + attack);
-        gain.gain.linearRampToValueAtTime(
-          gainAmount * amplitude * sustainLevel,
-          startTime + attack + decay
-        );
-        gain.gain.setValueAtTime(gainAmount * amplitude * sustainLevel, releaseStart);
-        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + noteDuration);
-        oscillator.connect(gain).connect(masterGain);
-        oscillator.start(startTime);
-        oscillator.stop(startTime + noteDuration + 0.03);
-        oscillators.push(oscillator);
-      });
-    });
-
-    this.playbackNodes.push({ masterGain, oscillators });
+    return this.playTransient(noteId, frequencies, options);
   }
 
   startSustainedNote(noteId, frequencies, options) {
     this.stopSustainedNote(noteId);
-    if (!this.context || !this.master) return;
-
-    const timbre = TIMBRES[options.timbre] ?? TIMBRES.organ;
-    const now = this.context.currentTime;
-    const masterGain = this.context.createGain();
-    masterGain.gain.setValueAtTime(0.0001, now);
-    masterGain.gain.linearRampToValueAtTime(0.18 / Math.max(1, Math.sqrt(frequencies.length)), now + 0.02);
-    masterGain.connect(this.master);
-
-    const oscillators = [];
-    frequencies.forEach((frequency) => {
-      timbre.forEach(([harmonic, amplitude]) => {
-        const oscillator = this.context.createOscillator();
-        const gain = this.context.createGain();
-        oscillator.type = "sine";
-        oscillator.frequency.value = frequency * harmonic;
-        gain.gain.value = amplitude;
-        oscillator.connect(gain).connect(masterGain);
-        oscillator.start(now);
-        oscillators.push(oscillator);
-      });
-    });
-
-    this.activeNotes.set(noteId, { masterGain, oscillators });
+    const voice = this.createVoice(noteId, frequencies, options, this.context?.currentTime ?? 0);
+    if (voice) this.activeNotes.set(noteId, voice);
   }
 
-  stopSustainedNote(noteId) {
-    if (!this.context) return;
-    const current = this.activeNotes.get(noteId);
-    if (!current) return;
-
-    const now = this.context.currentTime;
-    current.masterGain.gain.cancelScheduledValues(now);
-    current.masterGain.gain.setValueAtTime(Math.max(current.masterGain.gain.value, 0.0001), now);
-    current.masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
-    current.oscillators.forEach((oscillator) => oscillator.stop(now + 0.09));
+  stopSustainedNote(noteId, { minimumDuration = 0 } = {}) {
+    const voice = this.activeNotes.get(noteId);
+    if (!voice) return;
+    this.releaseVoice(voice, Math.max(this.context.currentTime, voice.startTime + minimumDuration));
     this.activeNotes.delete(noteId);
   }
 
   schedulePlayback(rows, options) {
     if (!this.context) return;
     this.stopAll();
-
-    const interval = options.interval ?? 0.24;
-    const duration = options.duration ?? Math.max(interval * 1.4, 0.36);
-
+    const interval = options.interval ?? .375;
+    const start = this.context.currentTime + .03;
     rows.forEach((row, index) => {
-      const timer = setTimeout(() => {
-        this.playPlaybackTransient(`playback-${index}`, [row.frequency], {
-          ...options,
-          duration,
-        });
-        options.onStep?.(row, index);
-      }, interval * 1000 * index);
-      this.playbackTimers.push(timer);
+      this.createVoice(`playback-${index}`, [row.frequency], options, start + interval * index, options.duration ?? interval);
+      this.playbackTimers.push(setTimeout(() => options.onStep?.(row, index), (start - this.context.currentTime + interval * index) * 1000));
     });
   }
 }
