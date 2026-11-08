@@ -89,18 +89,18 @@ h1 {
   box-shadow: var(--shadow);
 }
 
-.help-panel summary {
+.help-panel > summary {
   cursor: pointer;
   font-size: 1.2rem;
   font-weight: 700;
   list-style: none;
 }
 
-.help-panel summary::-webkit-details-marker {
+.help-panel > summary::-webkit-details-marker {
   display: none;
 }
 
-.help-panel summary::after {
+.help-panel > summary::after {
   content: "Show";
   float: right;
   font-size: 0.9rem;
@@ -108,8 +108,12 @@ h1 {
   color: var(--muted);
 }
 
-.help-panel[open] summary::after {
+.help-panel[open] > summary::after {
   content: "Hide";
+}
+
+.help-panel:not([open]) > .help-content {
+  display: none;
 }
 
 .help-content {
