@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Well-Formed Scale Explorer</title>
-    <link rel="stylesheet" href="./styles.css?v=21" />
+    <link rel="stylesheet" href="./styles.css?v=23" />
   </head>
   <body>
     <main class="app-shell">
@@ -393,6 +393,7 @@
           <button id="play-cycle">Play cycle</button>
           <button id="stop-playback" class="secondary-button">Stop</button>
         </div>
+        <div id="step-bar" class="step-bar" role="group" aria-label="Proportional scale steps"></div>
         <section id="interval-panel" class="interval-panel"></section>
         <div id="keyboard" class="keyboard" tabindex="0" aria-label="Scale explorer surface"></div>
         <p id="summary-line" class="summary-line"></p>
@@ -423,6 +424,6 @@
       </section>
     </main>
 
-    <script type="module" src="./app.js?v=62"></script>
+    <script type="module" src="./app.js?v=65"></script>
   </body>
 </html>

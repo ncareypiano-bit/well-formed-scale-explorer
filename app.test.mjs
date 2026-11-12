@@ -182,6 +182,64 @@ test('interval table uses Large/Small in size order even when A is smaller', () 
   assert.ok(Number(rows[0].cents) > Number(rows[1].cents));
 });
 
+test('step bar colors follow size through a Mode 3 generator drag while letters stay fixed', () => {
+  const {elements: e, run} = app();
+  e['mode-select'].value = '3'; e['mode-select'].fire('change');
+  const segments = () => e['step-bar'].children;
+  const word = segments().map(segment => segment.textContent).join('');
+  for (const [generator, aKind, bKind] of [
+    [Math.log2(1.5), 'large', 'small'], [4 / 7, 'single', 'single'], [0.56, 'small', 'large'],
+  ]) {
+    run(`state.circleDeformation.previewGeneratorValue = ${generator}; renderExplorerSurface(state.scale);`);
+    assert.equal(segments().map(segment => segment.textContent).join(''), word);
+    for (const segment of segments()) {
+      assert.equal(segment.className, `step-bar-segment ${segment.textContent === 'A' ? aKind : bKind}`);
+    }
+    const widths = segments().map(segment => parseFloat(segment.style.width));
+    assert.ok(Math.abs(widths.reduce((sum, width) => sum + width, 0) - 100) < 1e-9);
+  }
+  run('clearCircleDeformationState(); renderExplorerSurface(state.scale);');
+  assert.equal(segments().find(segment => segment.textContent === 'A').className, 'step-bar-segment large');
+});
+
+test('clockwise circle drags move the grabbed note clockwise in every mode and ordering', () => {
+  for (const order of ['step', 'generator']) {
+    for (let mode = 0; mode < 7; mode++) {
+      const {elements: e, run} = app();
+      e['mode-order'].value = order; e['mode-order'].fire('change');
+      e['mode-select'].value = String(mode); e['mode-select'].fire('change');
+      run(`
+        state.explorerView = 'circle';
+        let moveHandler;
+        window.addEventListener = (name, handler) => { if (name === 'pointermove') moveHandler = handler; };
+        window.removeEventListener = () => {};
+      `);
+      for (let degree = 1; degree < 7; degree++) {
+        run(`
+          clearCircleDeformationState();
+          renderExplorerSurface(state.scale);
+          var svg = els.keyboard.children[0].children[0];
+          svg.getBoundingClientRect = () => ({left: 0, top: 0, width: 620, height: 620});
+          var grabbedRow = modalCycleRows(state.scale).find(row => row.displayDegree === ${degree});
+          var beforePitch = grabbedRow.relativePitchClass;
+          var startPoint = circlePointPosition(beforePitch, 220, 310);
+          var endPoint = circlePointPosition(beforePitch + 0.01, 220, 310);
+          var hit = svg.children.find(node => node.getAttribute('class') === 'circle-hit' &&
+            node.getAttribute('aria-label').startsWith('Degree ${degree},'));
+          hit.fire('pointerdown', {button: 0, pointerId: 1, clientX: startPoint.x, clientY: startPoint.y});
+          moveHandler({pointerId: 1, clientX: endPoint.x, clientY: endPoint.y});
+        `);
+        const delta = run(`
+          var moved = previewCircleRows(state.scale, modalCycleRows(state.scale))
+            .find(row => row.fromGeneratorIndex === grabbedRow.fromGeneratorIndex);
+          ((moved.relativePitchClass - beforePitch + 0.5) % 1 + 1) % 1 - 0.5;
+        `);
+        assert.ok(Math.abs(delta - 0.0045) < 1e-10, `${order} mode ${mode}, degree ${degree}: ${delta}`);
+      }
+    }
+  }
+});
+
 test('metronome tempo schedules one cycle note per beat', async () => {
   const {elements: e, run} = app();
   assert.equal(e['tempo-input'].value, '160');

@@ -112,6 +112,7 @@ const els = {
   importDataFile: document.querySelector("#import-data-file"),
   generatorSpanLine: document.querySelector("#generator-span-line"),
   patternLine: document.querySelector("#pattern-line"),
+  stepBar: document.querySelector("#step-bar"),
   cyclePatternLine: document.querySelector("#cycle-pattern-line"),
   cycleFoldingLine: document.querySelector("#cycle-folding-line"),
   intervalPanel: document.querySelector("#interval-panel"),
@@ -1522,10 +1523,10 @@ function renderCircle(scale) {
         x: circleRect.left + circleRect.width / 2,
         y: circleRect.top + circleRect.height / 2,
       };
-      const generatorDistance = row.generatorOrderIndex ?? mod(
-        row.fromGeneratorIndex - tonicGeneratorIndex,
-        scale.cardinality
-      );
+      // Pitch motion depends on the signed difference in the original chain.
+      // Wrapping it modulo N preserves order, but reverses dragging for notes
+      // generated before the selected mode's tonic.
+      const generatorDistance = row.fromGeneratorIndex - tonicGeneratorIndex;
       const dragSession = {
         pointerId: event.pointerId,
         row,
@@ -1689,7 +1690,38 @@ function normalizedComputerKey(event) {
   return shiftedPunctuation[key] ?? key.toLowerCase();
 }
 
+function renderStepBar(scale) {
+  els.stepBar.innerHTML = "";
+  let displayedScale = scale;
+  const preview = state.circleDeformation.previewGeneratorValue;
+  if (preview !== null) {
+    displayedScale = applyMode(preserveStepLabels(buildScaleFromGenerator({
+      period: scale.period, generatorMode: "log", generatorInput: String(preview),
+      baseFrequency: scale.baseFrequency, cardinality: scale.cardinality,
+    }), scale), scale.mode);
+  }
+  const word = displayedScale.displayStepWord || displayedScale.stepWord;
+  const start = displayedScale.mode ?? 0;
+  const total = displayedScale.stepPattern.reduce((sum, step) => sum + step, 0);
+  const small = Math.min(...displayedScale.stepPattern);
+  const large = Math.max(...displayedScale.stepPattern);
+  [...word].forEach((letter, index) => {
+    const size = displayedScale.stepPattern[(start + index) % displayedScale.cardinality];
+    const kind = large - small <= 1e-10 ? "single"
+      : Math.abs(size - large) <= Math.abs(size - small) ? "large" : "small";
+    const description = `Step ${index + 1}: ${letter}, ${displayNumber(1200 * size * Math.log2(scale.period), 3)} cents`;
+    const segment = document.createElement("span");
+    segment.className = `step-bar-segment ${kind}`;
+    segment.style.width = `${100 * size / total}%`;
+    segment.textContent = letter;
+    segment.title = description;
+    segment.setAttribute("aria-label", description);
+    els.stepBar.appendChild(segment);
+  });
+}
+
 function renderExplorerSurface(scale) {
+  renderStepBar(scale);
   if (state.explorerView === "circle") {
     renderCircle(scale);
   } else {
@@ -1709,6 +1741,7 @@ function render() {
     updateScaleNamePlaceholder(null);
     els.generatorSpanLine.textContent = "";
     els.patternLine.textContent = "";
+    els.stepBar.innerHTML = "";
     els.cyclePatternLine.textContent = "";
     els.cycleFoldingLine.textContent = "";
     els.analysisPanel.innerHTML = "";
@@ -1723,7 +1756,8 @@ function render() {
   updateScaleNamePlaceholder(scale);
   renderAnalysisPanel(scale);
   els.generatorSpanLine.textContent = String(trueGeneratorSpan(scale));
-  els.patternLine.textContent = scale.displayStepWord || scale.stepWord || "";
+  const stepWord = scale.displayStepWord || scale.stepWord || "";
+  els.patternLine.textContent = `${stepWord} ${symbolCounts(stepWord, "A", "B")}`;
   els.cyclePatternLine.textContent = cyclePatternText(scale);
   els.cycleFoldingLine.textContent = cycleFoldingText(scale);
   renderIntervalPanel(scale);
